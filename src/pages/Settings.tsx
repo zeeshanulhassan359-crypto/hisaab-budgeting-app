@@ -56,50 +56,6 @@ export const Settings: React.FC<SettingsProps> = ({
     validTransactions: Transaction[];
   } | null>(null);
 
-  // Simple state machine CSV parser
-  const parseCSV = (text: string) => {
-    const lines: string[][] = [];
-    let row: string[] = [];
-    let inQuotes = false;
-    let currentField = "";
-
-    for (let i = 0; i < text.length; i++) {
-      const char = text[i];
-      const nextChar = text[i + 1];
-
-      if (char === '"') {
-        if (inQuotes && nextChar === '"') {
-          currentField += '"';
-          i++; // skip next quote
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (char === ',' && !inQuotes) {
-        row.push(currentField.trim());
-        currentField = "";
-      } else if ((char === '\r' || char === '\n') && !inQuotes) {
-        row.push(currentField.trim());
-        currentField = "";
-        if (row.length > 0 && row.some(field => field !== "")) {
-          lines.push(row);
-        }
-        row = [];
-        if (char === '\r' && nextChar === '\n') {
-          i++; // skip \n
-        }
-      } else {
-        currentField += char;
-      }
-    }
-    if (currentField || row.length > 0) {
-      row.push(currentField.trim());
-      if (row.some(field => field !== "")) {
-        lines.push(row);
-      }
-    }
-    return lines;
-  };
-
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -107,12 +63,28 @@ export const Settings: React.FC<SettingsProps> = ({
     setSelectedFile(file);
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
-        const text = event.target?.result as string;
-        const parsed = parseCSV(text);
+        const data = event.target?.result;
+        if (!data) throw new Error("Could not read file data.");
+
+        // Dynamically import xlsx for client-side XLS/XLSX/CSV parsing
+        const XLSX = await import("xlsx");
+        
+        const dataBytes = new Uint8Array(data as ArrayBuffer);
+        const workbook = XLSX.read(dataBytes, { type: "array" });
+        
+        if (workbook.SheetNames.length === 0) {
+          throw new Error("The Excel/CSV file does not contain any sheets.");
+        }
+
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        
+        // Convert sheet to 2D array of string/number values
+        const parsed = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1 });
         if (parsed.length <= 1) {
-          throw new Error("CSV file must contain a header row and at least one data row.");
+          throw new Error("File must contain a header row and at least one data row.");
         }
 
         // Detect column indices
@@ -125,15 +97,17 @@ export const Settings: React.FC<SettingsProps> = ({
 
         for (let r = 0; r < Math.min(parsed.length, 5); r++) {
           const row = parsed[r];
-          const d = row.findIndex(c => /date|time|val_date/i.test(c));
-          const a = row.findIndex(c => /amount|value|sum|amt|sar/i.test(c));
+          if (!row || !Array.isArray(row)) continue;
+          
+          const d = row.findIndex(c => c && /date|time|val_date/i.test(String(c)));
+          const a = row.findIndex(c => c && /amount|value|sum|amt|sar/i.test(String(c)));
           if (d !== -1 && a !== -1) {
             headerRowIndex = r;
             dateIdx = d;
             amountIdx = a;
-            noteIdx = row.findIndex(c => /desc|note|detail|payee|particulars|info/i.test(c));
-            categoryIdx = row.findIndex(c => /category|group|class/i.test(c));
-            typeIdx = row.findIndex(c => /type|dr_cr|d_c/i.test(c));
+            noteIdx = row.findIndex(c => c && /desc|note|detail|payee|particulars|info/i.test(String(c)));
+            categoryIdx = row.findIndex(c => c && /category|group|class/i.test(String(c)));
+            typeIdx = row.findIndex(c => c && /type|dr_cr|d_c/i.test(String(c)));
             break;
           }
         }
@@ -151,11 +125,21 @@ export const Settings: React.FC<SettingsProps> = ({
 
         for (let i = headerRowIndex + 1; i < parsed.length; i++) {
           const row = parsed[i];
-          if (!row[dateIdx] || !row[amountIdx]) continue;
+          if (!row || row[dateIdx] === undefined || row[amountIdx] === undefined) continue;
 
-          // Parse Date
-          const rawDate = row[dateIdx].trim();
-          const parsedDate = new Date(rawDate);
+          // Parse Date safely
+          const rawDate = row[dateIdx];
+          let parsedDate: Date;
+          
+          if (rawDate instanceof Date) {
+            parsedDate = rawDate;
+          } else if (typeof rawDate === "number") {
+            const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+            parsedDate = new Date(excelEpoch.getTime() + rawDate * 24 * 60 * 60 * 1000);
+          } else {
+            parsedDate = new Date(String(rawDate).trim());
+          }
+
           if (isNaN(parsedDate.getTime())) continue; // Skip invalid dates
 
           // Format date as YYYY-MM-DD
@@ -166,22 +150,27 @@ export const Settings: React.FC<SettingsProps> = ({
           if (!maxDateStr || dateStr > maxDateStr) maxDateStr = dateStr;
 
           // Parse Amount
-          const rawAmount = row[amountIdx].replace(/[^\d.-]/g, "");
-          const val = parseFloat(rawAmount);
+          let val = 0;
+          if (typeof row[amountIdx] === "number") {
+            val = row[amountIdx];
+          } else {
+            const rawAmount = String(row[amountIdx]).replace(/[^\d.-]/g, "");
+            val = parseFloat(rawAmount);
+          }
           if (isNaN(val)) continue;
 
           // Parse Note
-          const noteStr = noteIdx !== -1 && row[noteIdx] ? row[noteIdx].trim() : "Imported Transaction";
+          const noteStr = noteIdx !== -1 && row[noteIdx] !== undefined ? String(row[noteIdx]).trim() : "Imported Transaction";
 
           // Parse Category
-          const catStr = categoryIdx !== -1 && row[categoryIdx] ? row[categoryIdx].trim() : "Others";
+          const catStr = categoryIdx !== -1 && row[categoryIdx] !== undefined ? String(row[categoryIdx]).trim() : "Others";
 
           // Determine Type and correct positive amount
           let type: "income" | "expense" = "expense";
           let amount = Math.abs(val);
 
-          if (typeIdx !== -1 && row[typeIdx]) {
-            const tVal = row[typeIdx].toLowerCase().trim();
+          if (typeIdx !== -1 && row[typeIdx] !== undefined) {
+            const tVal = String(row[typeIdx]).toLowerCase().trim();
             if (tVal.includes("inc") || tVal.includes("cr") || tVal.includes("credit") || tVal.includes("deposit")) {
               type = "income";
             } else if (tVal.includes("exp") || tVal.includes("dr") || tVal.includes("debit") || tVal.includes("charge")) {
@@ -212,7 +201,7 @@ export const Settings: React.FC<SettingsProps> = ({
         }
 
         if (validTransactions.length === 0) {
-          throw new Error("No valid transactions could be parsed from the CSV file.");
+          throw new Error("No valid transactions could be parsed from the file.");
         }
 
         setPreviewData({
@@ -223,12 +212,12 @@ export const Settings: React.FC<SettingsProps> = ({
           validTransactions,
         });
       } catch (err: any) {
-        alert(`Failed to parse CSV: ${err.message || err}`);
+        alert(`Failed to parse statement file: ${err.message || err}`);
         setSelectedFile(null);
         setPreviewData(null);
       }
     };
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
     e.target.value = "";
   };
 
@@ -692,14 +681,14 @@ export const Settings: React.FC<SettingsProps> = ({
             </div>
           </div>
 
-          {/* Bank Statement CSV Importer */}
+          {/* Bank Statement Importer */}
           <div className="glass-panel p-5 flex flex-col gap-4">
             <h3 className="text-sm font-black text-text-primary uppercase tracking-wider flex items-center gap-2 border-b border-border-custom/50 pb-2">
               <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
-              Bank Statement CSV Importer
+              Bank Statement Importer (CSV/Excel)
             </h3>
             <p className="text-xs text-text-secondary leading-relaxed font-medium">
-              Upload your bank or credit card statement in <code className="bg-border-custom/30 px-1 py-0.5 rounded-sm font-bold">.csv</code> format to automatically import transactions.
+              Upload your bank or credit card statement in <code className="bg-border-custom/30 px-1 py-0.5 rounded-sm font-bold">.csv</code>, <code className="bg-border-custom/30 px-1 py-0.5 rounded-sm font-bold">.xls</code>, or <code className="bg-border-custom/30 px-1 py-0.5 rounded-sm font-bold">.xlsx</code> format to automatically import transactions without integrating bank accounts.
             </p>
 
             <div className="flex flex-col gap-4 text-xs font-semibold text-text-secondary mt-1">
@@ -723,19 +712,19 @@ export const Settings: React.FC<SettingsProps> = ({
                 </Select>
               </div>
 
-              {/* CSV File Input */}
+              {/* File Input */}
               <div className="flex flex-col gap-2">
-                <label className="text-text-primary font-bold">Select CSV File</label>
+                <label className="text-text-primary font-bold">Select CSV or Excel Statement File</label>
                 <div className="relative border-2 border-dashed border-border-custom/60 rounded-2xl p-6 hover:bg-border-custom/5 hover:border-accent-custom/50 transition duration-200 text-center flex flex-col items-center gap-2">
                   <input
                     type="file"
-                    accept=".csv"
+                    accept=".csv, .xls, .xlsx"
                     onChange={handleFileChange}
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                   />
                   <FileSpreadsheet className="w-8 h-8 text-text-tertiary" />
                   <span className="text-xs text-text-secondary font-bold">
-                    {selectedFile ? selectedFile.name : "Drag & drop or click to upload CSV"}
+                    {selectedFile ? selectedFile.name : "Drag & drop or click to upload CSV, XLS, or XLSX"}
                   </span>
                   {selectedFile && (
                     <span className="text-[10px] text-text-tertiary">
