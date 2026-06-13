@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Settings as SettingsIcon, Cloud, FileSpreadsheet, RotateCcw, AlertTriangle, Key, Trash2, Plus, CreditCard, Sliders } from "lucide-react";
 import { getOAuthConfig, saveOAuthConfig, clearOAuthConfig } from "../services/auth";
+import { getLocalSavingsGoals } from "../services/onedrive";
 import type { Transaction, Account } from "../services/onedrive";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -124,6 +125,56 @@ export const Settings: React.FC<SettingsProps> = ({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const handleExportBackup = () => {
+    const backupData = {
+      transactions: transactions,
+      accounts: accounts,
+      savingsGoals: getLocalSavingsGoals(),
+    };
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
+    const downloadAnchor = document.createElement("a");
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `hisaab_backup_${new Date().toISOString().split("T")[0]}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    document.body.removeChild(downloadAnchor);
+  };
+
+  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target?.result as string);
+        if (!data || typeof data !== "object") {
+          throw new Error("Invalid backup format: Must be a JSON object.");
+        }
+        
+        const importedTx = Array.isArray(data.transactions) ? data.transactions : [];
+        const importedAcc = Array.isArray(data.accounts) ? data.accounts : [];
+        const importedGoals = Array.isArray(data.savingsGoals) ? data.savingsGoals : [];
+
+        if (importedTx.length === 0 && importedAcc.length === 0 && importedGoals.length === 0) {
+          throw new Error("Backup file is empty or missing data fields.");
+        }
+
+        if (confirm(`Are you sure you want to restore this backup? It contains:\n- ${importedTx.length} Transactions\n- ${importedAcc.length} Accounts\n- ${importedGoals.length} Savings Goals\n\nThis will completely overwrite your current local database!`)) {
+          localStorage.setItem("budget_app_transactions", JSON.stringify(importedTx));
+          localStorage.setItem("budget_app_accounts", JSON.stringify(importedAcc));
+          localStorage.setItem("budget_app_savings_goals", JSON.stringify(importedGoals));
+          alert("Database backup restored successfully! Reloading page...");
+          onReloadApp();
+        }
+      } catch (err: any) {
+        alert(`Failed to restore backup: ${err.message || err}`);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
   };
 
   return (
@@ -412,7 +463,7 @@ export const Settings: React.FC<SettingsProps> = ({
             <div className="flex flex-col gap-3 text-xs">
               {/* CSV Export */}
               <div className="flex items-center justify-between p-3 border border-border-custom/50 rounded-2xl hover:bg-border-custom/5 transition">
-                <div className="flex flex-col">
+                <div className="flex flex-col text-left">
                   <span className="font-bold text-text-primary">Export Spreadsheet</span>
                   <span className="text-[10px] text-text-secondary font-medium">Download current database records in CSV.</span>
                 </div>
@@ -422,6 +473,37 @@ export const Settings: React.FC<SettingsProps> = ({
                 >
                   Export CSV
                 </Button>
+              </div>
+
+              {/* JSON Backup Export */}
+              <div className="flex items-center justify-between p-3 border border-border-custom/50 rounded-2xl hover:bg-border-custom/5 transition">
+                <div className="flex flex-col text-left">
+                  <span className="font-bold text-text-primary">Export JSON Backup</span>
+                  <span className="text-[10px] text-text-secondary font-medium">Download complete database backup (JSON) for your Desktop.</span>
+                </div>
+                <Button
+                  onClick={handleExportBackup}
+                  className="px-4 py-2 h-9 bg-accent-custom hover:bg-accent-custom-hover text-accent-custom-fg rounded-xl font-bold cursor-pointer transition shadow-xs"
+                >
+                  Export JSON
+                </Button>
+              </div>
+
+              {/* JSON Backup Restore */}
+              <div className="flex items-center justify-between p-3 border border-border-custom/50 rounded-2xl hover:bg-border-custom/5 transition">
+                <div className="flex flex-col text-left">
+                  <span className="font-bold text-text-primary">Restore JSON Backup</span>
+                  <span className="text-[10px] text-text-secondary font-medium">Restore all transactions, cards, and milestones from a file.</span>
+                </div>
+                <label className="px-4 py-2 h-9 bg-accent-custom hover:bg-accent-custom-hover text-accent-custom-fg rounded-xl font-bold cursor-pointer transition flex items-center justify-center text-center shadow-xs">
+                  Restore JSON
+                  <input
+                    type="file"
+                    accept=".json"
+                    onChange={handleImportBackup}
+                    className="hidden"
+                  />
+                </label>
               </div>
 
               {/* Reset database */}
