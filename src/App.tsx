@@ -5,17 +5,18 @@ import {
   getLocalAccounts,
   saveLocalAccounts,
   DEFAULT_ACCOUNTS,
-  syncOneDrive,
   getLocalSavingsGoals,
   saveLocalSavingsGoals,
 } from "./services/onedrive";
 import type { Transaction, Account, SavingsGoal } from "./services/onedrive";
 import {
-  loginWithMicrosoft,
-  logoutMicrosoft,
-  getActiveAccountInfo,
-  getMsalInstance,
-} from "./services/auth";
+  getHandleFromIndexedDB,
+  saveHandleToIndexedDB,
+  clearHandleFromIndexedDB,
+  verifyPermission,
+  writeDataToFolder,
+  readDataFromFolder,
+} from "./services/localFolder";
 import { Header } from "./components/Header";
 import { MobileLayout } from "./components/Layout/MobileLayout";
 import { DesktopLayout } from "./components/Layout/DesktopLayout";
@@ -73,8 +74,9 @@ function App() {
     return "light";
   });
 
-  // MSAL Active Account User State
-  const [user, setUser] = useState<any>(null);
+  // Local Folder Connection States
+  const [directoryHandle, setDirectoryHandle] = useState<FileSystemDirectoryHandle | null>(null);
+  const [user, setUser] = useState<{ name: string; isPermissionNeeded?: boolean } | null>(null);
 
   // Sync Status Monitoring
   const [isSyncing, setIsSyncing] = useState(false);
@@ -131,62 +133,124 @@ function App() {
     }
   }, [theme]);
 
-  // Initial Bootstrapper: check active MSAL session, load local, and attempt auto-sync
+  // Initial Bootstrapper: check IndexedDB for folder handle and restore connection
   useEffect(() => {
-    const bootstrapAuth = async () => {
+    const bootstrapFolder = async () => {
       try {
-        const instance = await getMsalInstance();
-        const activeAcc = instance.getActiveAccount();
-        if (activeAcc) {
-          setUser(activeAcc);
-          setSyncStatus("OneDrive account detected. Syncing...");
-          triggerSync();
-        } else {
-          setUser(null);
-          setSyncStatus("Unconnected. local database fallback.");
+        const handle = await getHandleFromIndexedDB();
+        if (handle) {
+          setDirectoryHandle(handle);
+          setUser({ name: handle.name, isPermissionNeeded: true });
+          setSyncStatus("Folder sync ready. Re-authorization needed.");
         }
       } catch (err) {
-        console.warn("MSAL setup skipped or failed. Continuing in local-only mode.", err);
-        setSyncStatus("Local database fallback.");
+        console.warn("Folder reload skipped or failed. Continuing in local-only mode.", err);
       }
     };
-    bootstrapAuth();
+    bootstrapFolder();
   }, []);
 
-  // Soft refresh callback for Settings configuration changes
+  // Soft refresh callback
   const handleReloadApp = async () => {
+    setTransactions(getLocalTransactions());
+    setAccounts(getLocalAccounts());
+    setSavingsGoals(getLocalSavingsGoals());
+    
     try {
-      const activeAcc = await getActiveAccountInfo();
-      setUser(activeAcc);
-      setTransactions(getLocalTransactions());
-      setAccounts(getLocalAccounts());
-      setSavingsGoals(getLocalSavingsGoals());
-      if (activeAcc) {
-        triggerSync();
+      const handle = await getHandleFromIndexedDB();
+      if (handle) {
+        setDirectoryHandle(handle);
+        setUser({ name: handle.name, isPermissionNeeded: true });
+        setSyncStatus("Folder sync ready. Re-authorization needed.");
       } else {
-        setSyncStatus("Local database fallback.");
+        setDirectoryHandle(null);
+        setUser(null);
+        setSyncStatus("Local database mode (offline).");
       }
     } catch {
+      setDirectoryHandle(null);
       setUser(null);
-      setSyncStatus("Local database fallback.");
+      setSyncStatus("Local database mode (offline).");
     }
   };
 
-  // Sync logic orchestrator
-  const triggerSync = async () => {
+  // Directory sync logic orchestrator
+  const triggerFolderSync = async (handleToUse?: FileSystemDirectoryHandle) => {
+    const handle = handleToUse || directoryHandle;
+    if (!handle) return;
+
     setIsSyncing(true);
-    setSyncStatus("Syncing OneDrive records...");
+    setSyncStatus("Syncing local directory...");
+
     try {
-      const result = await syncOneDrive();
-      setTransactions(result.transactions);
-      setAccounts(result.accounts);
-      setSavingsGoals(result.savingsGoals);
-      setSyncStatus(result.statusMessage);
+      const hasPermission = await verifyPermission(handle, true);
+      if (!hasPermission) {
+        setUser({ name: handle.name, isPermissionNeeded: true });
+        setSyncStatus("Folder permission denied.");
+        setIsSyncing(false);
+        return;
+      }
+
+      setUser({ name: handle.name, isPermissionNeeded: false });
+
+      const localTx = getLocalTransactions();
+      const localAcc = getLocalAccounts();
+      const localGoals = getLocalSavingsGoals();
+
+      const remoteData = await readDataFromFolder(handle);
+      let mergedTx = localTx;
+      let mergedAcc = localAcc;
+      let mergedGoals = localGoals;
+
+      if (remoteData) {
+        const { smartMergeTransactions, smartMergeAccounts, smartMergeSavingsGoals } = await import("./services/onedrive");
+        mergedTx = smartMergeTransactions(localTx, remoteData.transactions);
+        mergedAcc = smartMergeAccounts(localAcc, remoteData.accounts);
+        mergedGoals = smartMergeSavingsGoals(localGoals, remoteData.savingsGoals);
+
+        setTransactions(mergedTx);
+        setAccounts(mergedAcc);
+        setSavingsGoals(mergedGoals);
+        saveLocalTransactions(mergedTx);
+        saveLocalAccounts(mergedAcc);
+        saveLocalSavingsGoals(mergedGoals);
+      }
+
+      await writeDataToFolder(handle, mergedTx, mergedAcc, mergedGoals);
+      setSyncStatus(`Folder synced successfully at ${new Date().toLocaleTimeString()}`);
     } catch (err: any) {
+      console.error(err);
       setSyncStatus(`Sync issue: ${err.message || err}`);
     } finally {
       setIsSyncing(false);
     }
+  };
+
+  // Connect Local Directory
+  const handleConnectFolder = async () => {
+    try {
+      if (!(window as any).showDirectoryPicker) {
+        alert("Your browser does not support local directory access. Please use Chrome, Edge, or Opera.");
+        return;
+      }
+      const handle = await (window as any).showDirectoryPicker({ mode: "readwrite" });
+      setDirectoryHandle(handle);
+      setUser({ name: handle.name, isPermissionNeeded: false });
+      await saveHandleToIndexedDB(handle);
+      await triggerFolderSync(handle);
+    } catch (err: any) {
+      if (err.name !== "AbortError") {
+        alert(`Connection failed: ${err.message}`);
+      }
+    }
+  };
+
+  // Disconnect Local Directory
+  const handleDisconnectFolder = async () => {
+    setDirectoryHandle(null);
+    setUser(null);
+    await clearHandleFromIndexedDB();
+    setSyncStatus("Local database mode (offline).");
   };
 
   // Toggle Theme Switcher
@@ -221,7 +285,7 @@ function App() {
     saveLocalTransactions(updatedList);
 
     if (user) {
-      triggerSync();
+      triggerFolderSync();
     }
   };
 
@@ -232,7 +296,7 @@ function App() {
     saveLocalTransactions(updatedList);
 
     if (user) {
-      triggerSync();
+      triggerFolderSync();
     }
   };
 
@@ -256,7 +320,7 @@ function App() {
     saveLocalAccounts(updated);
 
     if (user) {
-      triggerSync();
+      triggerFolderSync();
     }
   };
 
@@ -301,7 +365,7 @@ function App() {
     saveLocalTransactions(updatedTxList);
 
     if (user) {
-      triggerSync();
+      triggerFolderSync();
     }
   };
 
@@ -324,7 +388,7 @@ function App() {
     }
 
     if (user) {
-      triggerSync();
+      triggerFolderSync();
     }
   };
 
@@ -336,33 +400,20 @@ function App() {
     saveLocalAccounts(DEFAULT_ACCOUNTS);
     setActiveAccountId(null);
     if (user) {
-      triggerSync();
+      triggerFolderSync();
     }
   };
 
-  // Login click actions
-  const handleLogin = async () => {
-    setSyncStatus("Connecting Microsoft OneDrive...");
-    try {
-      const activeAccount = await loginWithMicrosoft();
-      if (activeAccount) {
-        setUser(activeAccount);
-        triggerSync();
-      }
-    } catch (err: any) {
-      alert(`OneDrive Connection Failed: ${err.message || err}`);
-      setSyncStatus("Connection failed.");
-    }
-  };
-
-  // Logout actions
-  const handleLogout = async () => {
-    try {
-      await logoutMicrosoft();
-      setUser(null);
-      setSyncStatus("OneDrive Signed Out. Local cache remains.");
-    } catch (err: any) {
-      console.error("Logout process encountered error", err);
+  // Import transactions handler
+  const handleImportTransactions = async (importedTx: Transaction[]) => {
+    const updatedList = [...importedTx, ...transactions].sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+    setTransactions(updatedList);
+    saveLocalTransactions(updatedList);
+    if (directoryHandle) {
+      await writeDataToFolder(directoryHandle, updatedList, accounts, savingsGoals);
+      setSyncStatus(`Folder synced successfully at ${new Date().toLocaleTimeString()}`);
     }
   };
 
@@ -418,7 +469,7 @@ function App() {
     setIsStatementModalOpen(false);
     
     if (user) {
-      triggerSync();
+      triggerFolderSync();
     }
   };
 
@@ -466,6 +517,7 @@ function App() {
             onReloadApp={handleReloadApp}
             categoryBudgets={categoryBudgets}
             onUpdateCategoryBudgets={handleUpdateCategoryBudgets}
+            onImportTransactions={handleImportTransactions}
           />
         );
       default:
@@ -499,11 +551,11 @@ function App() {
             theme={theme}
             toggleTheme={handleToggleTheme}
             user={user}
-            onLogin={handleLogin}
-            onLogout={handleLogout}
+            onLogin={handleConnectFolder}
+            onLogout={handleDisconnectFolder}
             syncStatus={syncStatus}
             isSyncing={isSyncing}
-            onSync={triggerSync}
+            onSync={triggerFolderSync}
             activePage={activePage}
           />
           {renderPageContent()}
@@ -530,11 +582,11 @@ function App() {
           theme={theme}
           toggleTheme={handleToggleTheme}
           user={user}
-          onLogin={handleLogin}
-          onLogout={handleLogout}
+          onLogin={handleConnectFolder}
+          onLogout={handleDisconnectFolder}
           syncStatus={syncStatus}
           isSyncing={isSyncing}
-          onSync={triggerSync}
+          onSync={triggerFolderSync}
           activePage={activePage}
         />
         {renderPageContent()}

@@ -1,5 +1,5 @@
 import React from "react";
-import { LogIn, LogOut, RefreshCw, TrendingUp, TrendingDown } from "lucide-react";
+import { FolderOpen, RefreshCw, TrendingUp, TrendingDown, LogOut } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
 import type { Transaction, Account } from "../services/onedrive";
 
@@ -9,9 +9,9 @@ interface HeaderProps {
   activeAccountId: string | null;
   theme: "light" | "dark";
   toggleTheme: () => void;
-  user: any;
-  onLogin: () => void;
-  onLogout: () => void;
+  user: { name: string; isPermissionNeeded?: boolean } | null;
+  onLogin: () => void; // Connected to folder connection function
+  onLogout: () => void; // Connected to folder disconnection function
   syncStatus: string;
   isSyncing: boolean;
   onSync: () => void;
@@ -108,11 +108,13 @@ export const Header: React.FC<HeaderProps> = ({
           <h1 className="text-2xl font-semibold tracking-tight text-text-primary" style={{ fontFamily: 'var(--font-display)' }}>
             {pageTitle}
           </h1>
-          {user && (
+          {user ? (
             <p className="text-xs text-text-tertiary mt-1 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-success-custom inline-block animate-subtle-pulse" />
-              {syncStatus}
+              <span className={`w-1.5 h-1.5 rounded-full inline-block ${user.isPermissionNeeded ? "bg-warning-custom animate-pulse" : "bg-success-custom animate-subtle-pulse"}`} />
+              {user.isPermissionNeeded ? "Re-authorize folder sync" : syncStatus}
             </p>
+          ) : (
+            <p className="text-xs text-text-tertiary mt-1">Local database mode (offline).</p>
           )}
         </div>
 
@@ -124,7 +126,7 @@ export const Header: React.FC<HeaderProps> = ({
               className={`w-9 h-9 rounded-lg flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-all duration-200 cursor-pointer ${
                 isSyncing ? "animate-spin" : ""
               }`}
-              title={syncStatus}
+              title={user.isPermissionNeeded ? "Click to grant folder permission" : syncStatus}
               aria-label="Sync"
             >
               <RefreshCw className="w-4 h-4" />
@@ -134,22 +136,27 @@ export const Header: React.FC<HeaderProps> = ({
           <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
 
           {user ? (
-            <button
-              onClick={onLogout}
-              className="w-9 h-9 rounded-lg flex items-center justify-center text-text-tertiary hover:text-expense-custom hover:bg-expense-custom-bg transition-all duration-200 cursor-pointer"
-              title="Sign Out"
-              aria-label="Logout"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              <span className="hidden sm:inline text-xs text-text-secondary font-medium">
+                {user.name}
+              </span>
+              <button
+                onClick={onLogout}
+                className="w-9 h-9 rounded-lg flex items-center justify-center text-text-tertiary hover:text-expense-custom hover:bg-expense-custom-bg transition-all duration-200 cursor-pointer"
+                title="Disconnect Local Folder"
+                aria-label="Logout"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
           ) : (
             <button
               id="ms-login-btn"
               onClick={onLogin}
               className="flex items-center gap-2 px-4 h-9 bg-accent-custom text-accent-custom-fg rounded-full text-sm font-medium hover:opacity-90 transition-all duration-200 cursor-pointer"
             >
-              <LogIn className="w-4 h-4" />
-              <span className="hidden sm:inline">Connect</span>
+              <FolderOpen className="w-4 h-4" />
+              <span className="hidden sm:inline">Connect Folder</span>
             </button>
           )}
         </div>

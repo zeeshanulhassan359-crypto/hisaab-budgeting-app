@@ -1,6 +1,5 @@
 import React, { useState } from "react";
-import { Settings as SettingsIcon, Cloud, FileSpreadsheet, RotateCcw, AlertTriangle, Key, Trash2, Plus, CreditCard, Sliders } from "lucide-react";
-import { getOAuthConfig, saveOAuthConfig, clearOAuthConfig } from "../services/auth";
+import { Settings as SettingsIcon, Folder, FileSpreadsheet, AlertTriangle, Trash2, Plus, CreditCard, Sliders } from "lucide-react";
 import { getLocalSavingsGoals } from "../services/onedrive";
 import type { Transaction, Account } from "../services/onedrive";
 import { Input } from "@/components/ui/input";
@@ -16,6 +15,7 @@ interface SettingsProps {
   onReloadApp: () => void;
   categoryBudgets: { [key: string]: number };
   onUpdateCategoryBudgets: (limits: { [key: string]: number }) => void;
+  onImportTransactions: (imported: Transaction[]) => void;
 }
 
 const GRADIENTS = [
@@ -35,13 +35,8 @@ export const Settings: React.FC<SettingsProps> = ({
   onReloadApp,
   categoryBudgets,
   onUpdateCategoryBudgets,
+  onImportTransactions,
 }) => {
-  const currentConfig = getOAuthConfig();
-  const [clientId, setClientId] = useState(currentConfig.clientId);
-  const [tenantId, setTenantId] = useState(currentConfig.tenantId);
-  const [redirectUri, setRedirectUri] = useState(currentConfig.redirectUri);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-
   // Card Manager Form State
   const [cardName, setCardName] = useState("");
   const [cardType, setCardType] = useState<"credit" | "debit" | "cash">("debit");
@@ -50,29 +45,206 @@ export const Settings: React.FC<SettingsProps> = ({
   const [cardLimit, setCardLimit] = useState("10000");
   const [cardExpiry, setCardExpiry] = useState("");
 
-  const handleSaveConfig = (e: React.FormEvent) => {
-    e.preventDefault();
-    saveOAuthConfig({
-      clientId: clientId.trim(),
-      tenantId: tenantId.trim(),
-      redirectUri: redirectUri.trim(),
-    });
-    setSaveSuccess(true);
-    setTimeout(() => {
-      setSaveSuccess(false);
-      onReloadApp();
-    }, 1200);
+  // Bank Statement CSV Importer State
+  const [targetAccountId, setTargetAccountId] = useState(accounts[0]?.id || "main_wallet");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewData, setPreviewData] = useState<{
+    totalCount: number;
+    dateRange: string;
+    totalIncome: number;
+    totalExpense: number;
+    validTransactions: Transaction[];
+  } | null>(null);
+
+  // Simple state machine CSV parser
+  const parseCSV = (text: string) => {
+    const lines: string[][] = [];
+    let row: string[] = [];
+    let inQuotes = false;
+    let currentField = "";
+
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      const nextChar = text[i + 1];
+
+      if (char === '"') {
+        if (inQuotes && nextChar === '"') {
+          currentField += '"';
+          i++; // skip next quote
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        row.push(currentField.trim());
+        currentField = "";
+      } else if ((char === '\r' || char === '\n') && !inQuotes) {
+        row.push(currentField.trim());
+        currentField = "";
+        if (row.length > 0 && row.some(field => field !== "")) {
+          lines.push(row);
+        }
+        row = [];
+        if (char === '\r' && nextChar === '\n') {
+          i++; // skip \n
+        }
+      } else {
+        currentField += char;
+      }
+    }
+    if (currentField || row.length > 0) {
+      row.push(currentField.trim());
+      if (row.some(field => field !== "")) {
+        lines.push(row);
+      }
+    }
+    return lines;
   };
 
-  const handleResetConfig = () => {
-    if (confirm("Reset connection settings to default Hisaab sandbox credentials?")) {
-      clearOAuthConfig();
-      const reset = getOAuthConfig();
-      setClientId(reset.clientId);
-      setTenantId(reset.tenantId);
-      setRedirectUri(reset.redirectUri);
-      onReloadApp();
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setSelectedFile(file);
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        const parsed = parseCSV(text);
+        if (parsed.length <= 1) {
+          throw new Error("CSV file must contain a header row and at least one data row.");
+        }
+
+        // Detect column indices
+        let headerRowIndex = 0;
+        let dateIdx = -1;
+        let noteIdx = -1;
+        let amountIdx = -1;
+        let categoryIdx = -1;
+        let typeIdx = -1;
+
+        for (let r = 0; r < Math.min(parsed.length, 5); r++) {
+          const row = parsed[r];
+          const d = row.findIndex(c => /date|time|val_date/i.test(c));
+          const a = row.findIndex(c => /amount|value|sum|amt|sar/i.test(c));
+          if (d !== -1 && a !== -1) {
+            headerRowIndex = r;
+            dateIdx = d;
+            amountIdx = a;
+            noteIdx = row.findIndex(c => /desc|note|detail|payee|particulars|info/i.test(c));
+            categoryIdx = row.findIndex(c => /category|group|class/i.test(c));
+            typeIdx = row.findIndex(c => /type|dr_cr|d_c/i.test(c));
+            break;
+          }
+        }
+
+        // Fallbacks if not auto-detected
+        if (dateIdx === -1) dateIdx = 0;
+        if (amountIdx === -1) amountIdx = 1;
+        if (noteIdx === -1) noteIdx = 2 !== amountIdx && 2 !== dateIdx ? 2 : 3;
+
+        const validTransactions: Transaction[] = [];
+        let totalIncome = 0;
+        let totalExpense = 0;
+        let minDateStr = "";
+        let maxDateStr = "";
+
+        for (let i = headerRowIndex + 1; i < parsed.length; i++) {
+          const row = parsed[i];
+          if (!row[dateIdx] || !row[amountIdx]) continue;
+
+          // Parse Date
+          const rawDate = row[dateIdx].trim();
+          const parsedDate = new Date(rawDate);
+          if (isNaN(parsedDate.getTime())) continue; // Skip invalid dates
+
+          // Format date as YYYY-MM-DD
+          const dateStr = parsedDate.toISOString().split("T")[0];
+
+          // Track min/max dates
+          if (!minDateStr || dateStr < minDateStr) minDateStr = dateStr;
+          if (!maxDateStr || dateStr > maxDateStr) maxDateStr = dateStr;
+
+          // Parse Amount
+          const rawAmount = row[amountIdx].replace(/[^\d.-]/g, "");
+          const val = parseFloat(rawAmount);
+          if (isNaN(val)) continue;
+
+          // Parse Note
+          const noteStr = noteIdx !== -1 && row[noteIdx] ? row[noteIdx].trim() : "Imported Transaction";
+
+          // Parse Category
+          const catStr = categoryIdx !== -1 && row[categoryIdx] ? row[categoryIdx].trim() : "Others";
+
+          // Determine Type and correct positive amount
+          let type: "income" | "expense" = "expense";
+          let amount = Math.abs(val);
+
+          if (typeIdx !== -1 && row[typeIdx]) {
+            const tVal = row[typeIdx].toLowerCase().trim();
+            if (tVal.includes("inc") || tVal.includes("cr") || tVal.includes("credit") || tVal.includes("deposit")) {
+              type = "income";
+            } else if (tVal.includes("exp") || tVal.includes("dr") || tVal.includes("debit") || tVal.includes("charge")) {
+              type = "expense";
+            } else {
+              type = val >= 0 ? "income" : "expense";
+            }
+          } else {
+            type = val >= 0 ? "income" : "expense";
+          }
+
+          if (type === "income") {
+            totalIncome += amount;
+          } else {
+            totalExpense += amount;
+          }
+
+          validTransactions.push({
+            id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 9),
+            amount,
+            category: catStr,
+            type,
+            date: dateStr,
+            note: noteStr,
+            accountId: targetAccountId,
+            updatedAt: Date.now(),
+          });
+        }
+
+        if (validTransactions.length === 0) {
+          throw new Error("No valid transactions could be parsed from the CSV file.");
+        }
+
+        setPreviewData({
+          totalCount: validTransactions.length,
+          dateRange: minDateStr === maxDateStr ? minDateStr : `${minDateStr} to ${maxDateStr}`,
+          totalIncome,
+          totalExpense,
+          validTransactions,
+        });
+      } catch (err: any) {
+        alert(`Failed to parse CSV: ${err.message || err}`);
+        setSelectedFile(null);
+        setPreviewData(null);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const handleConfirmImport = () => {
+    if (!previewData) return;
+    if (confirm(`Import ${previewData.totalCount} transactions into Hisaab?`)) {
+      onImportTransactions(previewData.validTransactions);
+      alert("Transactions imported successfully!");
+      setSelectedFile(null);
+      setPreviewData(null);
     }
+  };
+
+  const handleCancelImport = () => {
+    setSelectedFile(null);
+    setPreviewData(null);
   };
 
   const handleAddCardSubmit = (e: React.FormEvent) => {
@@ -189,78 +361,31 @@ export const Settings: React.FC<SettingsProps> = ({
           Application Settings
         </h2>
         <p className="text-xs text-text-secondary font-medium">
-          Manage database backups, manage multiple payment cards, or connect your custom OneDrive cloud credentials.
+          Manage database backups, manage multiple payment cards, or connect a local folder on your desktop to automatically sync your database and transaction spreadsheets.
         </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
         <div className="flex flex-col gap-6">
-          {/* OneDrive App Registration Credentials */}
+          {/* Local Folder Sync Guide */}
           <div className="glass-panel p-5 flex flex-col gap-4">
             <h3 className="text-sm font-black text-text-primary uppercase tracking-wider flex items-center gap-2 border-b border-border-custom/50 pb-2">
-              <Cloud className="w-4 h-4 text-accent-custom" />
-              OneDrive Auth Config
+              <Folder className="w-4 h-4 text-accent-custom" />
+              Local Folder Sync Guide
             </h3>
-
-            <form onSubmit={handleSaveConfig} className="flex flex-col gap-3.5 text-xs font-semibold text-text-secondary">
-              {/* Client ID */}
-              <div className="flex flex-col gap-1">
-                <label className="text-text-secondary font-bold">Azure Application (Client) ID</label>
-                <Input
-                  type="text"
-                  value={clientId}
-                  onChange={(e) => setClientId(e.target.value)}
-                  placeholder="Enter Client ID"
-                  className="w-full h-10 px-3.5 py-2.5 bg-border-custom/10 border border-border-custom rounded-xl font-medium text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent-custom/50 transition"
-                  required
-                />
+            <div className="flex flex-col gap-3 text-xs leading-relaxed text-text-secondary font-medium">
+              <p>
+                Connect a local folder on your computer (like a folder on your Desktop) to automatically synchronize your transactions.
+              </p>
+              <ul className="list-disc pl-4 flex flex-col gap-1.5">
+                <li>Creates a live <code className="bg-border-custom/30 px-1 py-0.5 rounded-sm">database.json</code> backup.</li>
+                <li>Generates an Excel-compatible <code className="bg-border-custom/30 px-1 py-0.5 rounded-sm">transactions.csv</code> spreadsheet.</li>
+                <li>Your data stays private and fully on your own local drive.</li>
+              </ul>
+              <div className="p-3 bg-accent-custom-bg/10 border border-accent-custom/20 rounded-xl mt-1 text-accent-custom">
+                <strong>Tip:</strong> You can open the <code className="bg-border-custom/30 px-1.5 py-0.5 rounded-sm font-bold">transactions.csv</code> file directly in Microsoft Excel or Google Sheets to run custom pivots or format your reports!
               </div>
-
-              {/* Tenant ID */}
-              <div className="flex flex-col gap-1">
-                <label className="text-text-secondary font-bold">Directory (Tenant) ID</label>
-                <Input
-                  type="text"
-                  value={tenantId}
-                  onChange={(e) => setTenantId(e.target.value)}
-                  placeholder="common, organizations, or tenant GUID"
-                  className="w-full h-10 px-3.5 py-2.5 bg-border-custom/10 border border-border-custom rounded-xl font-medium text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent-custom/50 transition"
-                  required
-                />
-              </div>
-
-              {/* Redirect URI */}
-              <div className="flex flex-col gap-1">
-                <label className="text-text-secondary font-bold">Redirect URI</label>
-                <Input
-                  type="text"
-                  value={redirectUri}
-                  onChange={(e) => setRedirectUri(e.target.value)}
-                  placeholder="http://localhost:5173"
-                  className="w-full h-10 px-3.5 py-2.5 bg-border-custom/10 border border-border-custom rounded-xl font-medium text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent-custom/50 transition"
-                  required
-                />
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border-custom/50">
-                <Button
-                  type="submit"
-                  className="flex-1 h-10 bg-accent-custom hover:bg-accent-custom-hover text-accent-custom-fg rounded-xl font-bold cursor-pointer transition text-center shadow-xs"
-                >
-                  {saveSuccess ? "Saved & Restarting..." : "Save & Reconnect"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleResetConfig}
-                  className="h-10 w-10 border border-border-custom hover:bg-border-custom/20 rounded-xl text-text-secondary cursor-pointer transition p-0 flex items-center justify-center"
-                  title="Reset to Defaults"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                </Button>
-              </div>
-            </form>
+            </div>
           </div>
 
           {/* Card & Account Manager */}
@@ -567,19 +692,94 @@ export const Settings: React.FC<SettingsProps> = ({
             </div>
           </div>
 
-          {/* Quick Integration Guide */}
-          <div className="glass-panel p-5 flex flex-col gap-3 text-xs leading-relaxed text-text-secondary">
-            <h4 className="font-black text-text-primary uppercase tracking-wider flex items-center gap-1.5 border-b border-border-custom/50 pb-1.5">
-              <Key className="w-4 h-4 text-amber-500" />
-              Azure App Reg Guide
-            </h4>
-            <ol className="list-decimal pl-4 flex flex-col gap-1.5 font-medium">
-              <li>Log in to the <a href="https://portal.azure.com" target="_blank" rel="noreferrer" className="text-accent-custom hover:underline font-bold">Azure Portal</a>.</li>
-              <li>Go to <strong>Microsoft Entra ID (Azure Active Directory)</strong> &gt; <strong>App registrations</strong>.</li>
-              <li>Select <strong>New registration</strong>. Set redirect type to <strong>SPA</strong> and input your hosting URI (e.g. <code className="bg-border-custom/30 px-1 py-0.5 rounded-sm">http://localhost:5173</code>).</li>
-              <li>Add API Permission: <code className="bg-border-custom/30 px-1 py-0.5 rounded-sm">Files.ReadWrite.AppFolder</code> and grant admin consent if needed.</li>
-              <li>Copy the <strong>Application (client) ID</strong> and paste it into the configs on the left!</li>
-            </ol>
+          {/* Bank Statement CSV Importer */}
+          <div className="glass-panel p-5 flex flex-col gap-4">
+            <h3 className="text-sm font-black text-text-primary uppercase tracking-wider flex items-center gap-2 border-b border-border-custom/50 pb-2">
+              <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
+              Bank Statement CSV Importer
+            </h3>
+            <p className="text-xs text-text-secondary leading-relaxed font-medium">
+              Upload your bank or credit card statement in <code className="bg-border-custom/30 px-1 py-0.5 rounded-sm font-bold">.csv</code> format to automatically import transactions.
+            </p>
+
+            <div className="flex flex-col gap-4 text-xs font-semibold text-text-secondary mt-1">
+              {/* Select Target Card/Account */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-text-primary font-bold">Target Payment Card / Wallet</label>
+                <Select
+                  value={targetAccountId}
+                  onValueChange={setTargetAccountId}
+                >
+                  <SelectTrigger className="w-full h-10 px-3.5 py-2.5 bg-border-custom/10 border border-border-custom rounded-xl font-bold text-text-primary focus:outline-hidden cursor-pointer">
+                    <SelectValue placeholder="Select target account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accounts.map((acc) => (
+                      <SelectItem key={acc.id} value={acc.id} className="cursor-pointer">
+                        {acc.name} (•••• {acc.lastFour})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* CSV File Input */}
+              <div className="flex flex-col gap-2">
+                <label className="text-text-primary font-bold">Select CSV File</label>
+                <div className="relative border-2 border-dashed border-border-custom/60 rounded-2xl p-6 hover:bg-border-custom/5 hover:border-accent-custom/50 transition duration-200 text-center flex flex-col items-center gap-2">
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handleFileChange}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                  <FileSpreadsheet className="w-8 h-8 text-text-tertiary" />
+                  <span className="text-xs text-text-secondary font-bold">
+                    {selectedFile ? selectedFile.name : "Drag & drop or click to upload CSV"}
+                  </span>
+                  {selectedFile && (
+                    <span className="text-[10px] text-text-tertiary">
+                      {(selectedFile.size / 1024).toFixed(1)} KB
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Parsing result summary overlay */}
+              {previewData && (
+                <div className="flex flex-col gap-3 p-4 border border-border-custom bg-border-custom/5 rounded-2xl animate-fade-in">
+                  <span className="text-[11px] text-text-primary font-bold uppercase tracking-wider">
+                    Statement Parse Summary
+                  </span>
+                  <div className="grid grid-cols-2 gap-2 text-[11px] text-text-secondary font-medium">
+                    <div>Transactions found:</div>
+                    <div className="font-bold text-text-primary">{previewData.totalCount}</div>
+                    <div>Date range:</div>
+                    <div className="font-bold text-text-primary">{previewData.dateRange}</div>
+                    <div>Total Income:</div>
+                    <div className="font-bold text-success-custom">SAR {previewData.totalIncome.toFixed(2)}</div>
+                    <div>Total Expenses:</div>
+                    <div className="font-bold text-expense-custom">SAR {previewData.totalExpense.toFixed(2)}</div>
+                  </div>
+
+                  <div className="flex gap-2 mt-2">
+                    <Button
+                      onClick={handleCancelImport}
+                      variant="outline"
+                      className="flex-1 h-9 border border-border-custom hover:bg-border-custom/20 rounded-xl font-bold cursor-pointer transition text-center"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleConfirmImport}
+                      className="flex-1 h-9 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold cursor-pointer transition text-center"
+                    >
+                      Confirm Import
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
