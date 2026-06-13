@@ -1,0 +1,62 @@
+.dark {
+  /* Surface — Dark product bands from design system */
+  --bg-app: #0a0a0c;
+  --bg-card: #111113;
+  --bg-card-hover: #18181b;
+  --bg-elevated: #1a1a1e;
+  --bg-stone: #17171c;
+  --bg-pale-green: rgba(0, 60, 51, 0.15);
+  --bg-pale-blue: rgba(24, 99, 220, 0.08);
+
+  /* Border — Dark translucent */
+  --border-color: rgba(255, 255, 255, 0.08);
+  --border-light: rgba(255, 255, 255, 0.06);
+  --border-card: rgba(255, 255, 255, 0.04);
+
+  /* Text — Inverted for dark surfaces */
+  --text-primary: #fafafa;
+  --text-secondary: #93939f;
+  --text-tertiary: #5a5a66;
+
+  /* Brand & Accent — Design System */
+  --color-accent: #ffffff;
+  --color-accent-hover: #e5e7eb;
+  --color-accent-bg: rgba(255, 255, 255, 0.06);
+  --color-accent-fg: #0a0a0c;
+  --color-action-blue: #5b9aff;
+  --color-coral: #ff7759;
+  --color-soft-coral: #ffad9b;
+  --color-deep-green: #003c33;
+  --color-dark-navy: #071829;
+
+  /* Semantic */
+  --color-success: #34d399;
+  --color-success-bg: rgba(52, 211, 153, 0.10);
+  --color-expense: #f87171;
+  --color-expense-bg: rgba(248, 113, 113, 0.10);
+  --color-warning: #fbbf24;
+  --color-warning-bg: rgba(251, 191, 36, 0.10);
+  --color-focus-blue: #4c6ee6;
+  --color-focus-violet: #9b60aa;
+  --color-error: #f87171;
+
+  /* Shadows — Flat, border-driven */
+  --shadow-card: 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --shadow-card-hover: 0 0 0 1px rgba(255, 255, 255, 0.10);
+  --shadow-glow: none;
+
+  /* Typography */
+  --font-display: 'Space Grotesk', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-family: 'Inter', Arial, ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+
+  /* Radii — same as light */
+  --border-radius-xs: 4px;
+  --border-radius-sm: 8px;
+  --border-radius-card: 16px;
+  --border-radius-lg: 22px;
+  --border-radius-xl: 30px;
+  --border-radius-pill: 32px;
+  --border-radius-button: 32px;
+  --border-radius-full: 9999px;
+}

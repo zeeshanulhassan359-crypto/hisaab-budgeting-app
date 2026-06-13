@@ -1,0 +1,62 @@
+:root {
+  /* Surface & Background — Design System */
+  --bg-app: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card-hover: #fafafa;
+  --bg-elevated: #eeece7;
+  --bg-stone: #eeece7;
+  --bg-pale-green: #edfce9;
+  --bg-pale-blue: #f1f5ff;
+
+  /* Border — Design System */
+  --border-color: #d9d9dd;
+  --border-light: #e5e7eb;
+  --border-card: #f2f2f2;
+
+  /* Text — Design System */
+  --text-primary: #212121;
+  --text-secondary: #75758a;
+  --text-tertiary: #93939f;
+
+  /* Brand & Accent — Design System */
+  --color-accent: #17171c;
+  --color-accent-hover: #000000;
+  --color-accent-bg: rgba(23, 23, 28, 0.04);
+  --color-accent-fg: #ffffff;
+  --color-action-blue: #1863dc;
+  --color-coral: #ff7759;
+  --color-soft-coral: #ffad9b;
+  --color-deep-green: #003c33;
+  --color-dark-navy: #071829;
+
+  /* Semantic — Design System */
+  --color-success: #16a34a;
+  --color-success-bg: rgba(22, 163, 74, 0.06);
+  --color-expense: #b30000;
+  --color-expense-bg: rgba(179, 0, 0, 0.05);
+  --color-warning: #f59e0b;
+  --color-warning-bg: rgba(245, 158, 11, 0.06);
+  --color-focus-blue: #4c6ee6;
+  --color-focus-violet: #9b60aa;
+  --color-error: #b30000;
+
+  /* Shadows — Flat by design system, thin borders do the work */
+  --shadow-card: 0 0 0 1px #f2f2f2;
+  --shadow-card-hover: 0 0 0 1px #d9d9dd;
+  --shadow-glow: none;
+
+  /* Typography — Design System fallback stack */
+  --font-display: 'Space Grotesk', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-family: 'Inter', Arial, ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+
+  /* Radii — Design System tokens */
+  --border-radius-xs: 4px;
+  --border-radius-sm: 8px;
+  --border-radius-card: 16px;
+  --border-radius-lg: 22px;
+  --border-radius-xl: 30px;
+  --border-radius-pill: 32px;
+  --border-radius-button: 32px;
+  --border-radius-full: 9999px;
+}
