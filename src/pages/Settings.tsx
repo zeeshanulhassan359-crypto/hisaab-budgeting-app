@@ -276,16 +276,18 @@ export const Settings: React.FC<SettingsProps> = ({
     ]);
 
     const csvContent =
-      "data:text/csv;charset=utf-8," +
+      "\uFEFF" + // BOM for Excel UTF-8 compatibility
       [headers.join(","), ...rows.map((e) => e.map((val) => `"${val}"`).join(","))].join("\n");
 
-    const encodedUri = encodeURI(csvContent);
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
+    link.setAttribute("href", url);
     link.setAttribute("download", `hisaab_records_${new Date().toISOString().split("T")[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const handleExportBackup = () => {
@@ -294,13 +296,16 @@ export const Settings: React.FC<SettingsProps> = ({
       accounts: accounts,
       savingsGoals: getLocalSavingsGoals(),
     };
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
+    const jsonStr = JSON.stringify(backupData, null, 2);
+    const blob = new Blob([jsonStr], { type: "application/json;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
     const downloadAnchor = document.createElement("a");
-    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("href", url);
     downloadAnchor.setAttribute("download", `hisaab_backup_${new Date().toISOString().split("T")[0]}.json`);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     document.body.removeChild(downloadAnchor);
+    URL.revokeObjectURL(url);
   };
 
   const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {

@@ -11,7 +11,7 @@ export const WeeklyReport: React.FC<WeeklyReportProps> = ({ transactions }) => {
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
   sevenDaysAgo.setHours(0, 0, 0, 0);
 
-  const weeklyTx = transactions.filter((t) => new Date(t.date) >= sevenDaysAgo);
+  const weeklyTx = transactions.filter((t) => new Date(`${t.date}T00:00:00`) >= sevenDaysAgo);
 
   const totalIncome = weeklyTx.filter((t) => t.type === "income").reduce((sum, t) => sum + t.amount, 0);
   const totalExpense = weeklyTx.filter((t) => t.type === "expense").reduce((sum, t) => sum + t.amount, 0);
@@ -60,8 +60,13 @@ export const WeeklyReport: React.FC<WeeklyReportProps> = ({ transactions }) => {
   // Donut params
   const radius = 38;
   const circumference = 2 * Math.PI * radius;
-  let accumulatedPercent = 0;
   const donutColors = ["#17171c", "#003c33", "#ff7759", "#1863dc", "#93939f", "#ffad9b", "#f59e0b", "#75758a"];
+
+  // Pre-compute cumulative percent offsets to avoid mutating a variable inside JSX map (React Strict Mode safe)
+  const cumulativeOffsets = categoryBreakdown.reduce<number[]>((acc, _cat, i) => {
+    acc.push(i === 0 ? 0 : acc[i - 1] + categoryBreakdown[i - 1].percentage);
+    return acc;
+  }, []);
 
   return (
     <div className="glass-panel p-6 flex flex-col gap-6">
@@ -126,8 +131,7 @@ export const WeeklyReport: React.FC<WeeklyReportProps> = ({ transactions }) => {
                 <circle cx="50" cy="50" r={radius} fill="transparent" stroke="var(--border-color)" strokeWidth="8" />
                 {categoryBreakdown.map((cat, i) => {
                   const strokeOffset = circumference - (cat.percentage / 100) * circumference;
-                  const currentAccumulated = accumulatedPercent;
-                  accumulatedPercent += cat.percentage;
+                  const currentAccumulated = cumulativeOffsets[i];
                   return (
                     <circle
                       key={cat.name}

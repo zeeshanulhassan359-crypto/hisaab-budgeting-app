@@ -53,7 +53,7 @@ export const Home: React.FC<HomeProps> = ({
   // Budget Compliance Warnings calculations (current calendar month only)
   const now = new Date();
   const currentMonthTx = transactions.filter((t) => {
-    const d = new Date(t.date);
+    const d = new Date(`${t.date}T00:00:00`);
     return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
   });
 

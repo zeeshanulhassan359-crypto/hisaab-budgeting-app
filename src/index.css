@@ -1,12 +1,12 @@
+/* Google Fonts — Space Grotesk for display, Inter for body */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
 @import "tailwindcss";
 
 @import "./styles/light.css";
 @import "./styles/dark.css";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-
-/* Google Fonts — Space Grotesk for display, Inter for body */
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
 
 @custom-variant dark (&:is(.dark *));
 

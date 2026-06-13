@@ -412,8 +412,18 @@ function App() {
     setTransactions(updatedList);
     saveLocalTransactions(updatedList);
     if (directoryHandle) {
-      await writeDataToFolder(directoryHandle, updatedList, accounts, savingsGoals);
-      setSyncStatus(`Folder synced successfully at ${new Date().toLocaleTimeString()}`);
+      try {
+        const hasPermission = await verifyPermission(directoryHandle, true);
+        if (hasPermission) {
+          await writeDataToFolder(directoryHandle, updatedList, accounts, savingsGoals);
+          setSyncStatus(`Folder synced successfully at ${new Date().toLocaleTimeString()}`);
+        } else {
+          setSyncStatus("Folder permission denied. Import saved locally.");
+        }
+      } catch (err: any) {
+        console.warn("Folder sync after import failed:", err.message || err);
+        setSyncStatus("Import saved locally (folder sync unavailable).");
+      }
     }
   };
 

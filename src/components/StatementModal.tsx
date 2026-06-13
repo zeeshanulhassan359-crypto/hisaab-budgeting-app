@@ -46,7 +46,7 @@ export const StatementModal: React.FC<StatementModalProps> = ({
   const selectedCard = creditCardsWithDebt[selectedCardIndex];
   
   const [paymentAmount, setPaymentAmount] = useState<string>(() => {
-    return selectedCard ? selectedCard.debt.toFixed(2) : "0";
+    return creditCardsWithDebt[0] ? creditCardsWithDebt[0].debt.toFixed(2) : "0";
   });
   
   const [sourceAccountId, setSourceAccountId] = useState<string>(() => {
@@ -90,7 +90,7 @@ export const StatementModal: React.FC<StatementModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onSnooze(); }}>
-      <DialogContent className="max-w-md rounded-2xl bg-bg-card border border-border-custom p-6 shadow-2xl overflow-hidden" showCloseButton={false}>
+      <DialogContent className="max-w-md rounded-2xl bg-bg-card border border-border-custom p-6 shadow-2xl overflow-hidden relative" showCloseButton={false}>
         <DialogDescription className="sr-only">
           Modal prompt for settling credit card balances on the 25th of the month.
         </DialogDescription>

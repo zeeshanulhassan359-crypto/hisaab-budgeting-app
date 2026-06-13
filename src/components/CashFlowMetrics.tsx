@@ -20,7 +20,7 @@ export const CashFlowMetrics: React.FC<CashFlowMetricsProps> = ({
 
   // Filter transactions for current month
   const monthlyTransactions = transactions.filter((t) => {
-    const d = new Date(t.date);
+    const d = new Date(`${t.date}T00:00:00`);
     return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
   });
 

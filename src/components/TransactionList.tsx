@@ -49,7 +49,8 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
     if (dateStr === today) return "Today";
     if (dateStr === yesterday) return "Yesterday";
-    return new Date(dateStr).toLocaleDateString(undefined, {
+    // Parse as local midnight (append T00:00:00 to avoid UTC-vs-local timezone offset mismatch)
+    return new Date(`${dateStr}T00:00:00`).toLocaleDateString(undefined, {
       weekday: "short",
       month: "short",
       day: "numeric",
@@ -83,16 +84,18 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     ]);
 
     const csvContent =
-      "data:text/csv;charset=utf-8," +
+      "\uFEFF" + // BOM for Excel UTF-8 compatibility
       [headers.join(","), ...rows.map((e) => e.map((val) => `"${val}"`).join(","))].join("\n");
 
-    const encodedUri = encodeURI(csvContent);
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
+    link.setAttribute("href", url);
     link.setAttribute("download", `hisaab_transactions_${new Date().toISOString().split("T")[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const handleExportJSON = () => {
@@ -101,13 +104,16 @@ export const TransactionList: React.FC<TransactionListProps> = ({
       return;
     }
 
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(transactions, null, 2));
+    const jsonStr = JSON.stringify(transactions, null, 2);
+    const blob = new Blob([jsonStr], { type: "application/json;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", dataStr);
+    link.setAttribute("href", url);
     link.setAttribute("download", `hisaab_transactions_${new Date().toISOString().split("T")[0]}.json`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   return (
