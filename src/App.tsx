@@ -24,6 +24,8 @@ import { Home } from "./pages/Home";
 import { Investments } from "./pages/Investments";
 import { Settings } from "./pages/Settings";
 import { StatementModal } from "./components/StatementModal";
+import Confetti from "react-confetti";
+import { useWindowSize } from "react-use";
 
 function App() {
   // Navigation & Page State
@@ -81,6 +83,10 @@ function App() {
   // Sync Status Monitoring
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState("Local database mode (offline).");
+
+  // Celebration state
+  const [showConfetti, setShowConfetti] = useState(false);
+  const { width, height } = useWindowSize();
 
   // Track responsive screen size updates
   useEffect(() => {
@@ -326,11 +332,20 @@ function App() {
 
   // Savings Goal Contribution Handler
   const handleContributeToGoal = async (goalId: string, amount: number, accountId: string) => {
+    let justCompleted = false;
+
     const updatedGoals = savingsGoals.map((g) => {
       if (g.id === goalId) {
+        const newAmount = g.currentAmount + amount;
+        const isComplete = newAmount >= g.targetAmount;
+        if (isComplete && g.status !== "completed") {
+          justCompleted = true;
+        }
         return {
           ...g,
-          currentAmount: g.currentAmount + amount,
+          currentAmount: newAmount,
+          status: isComplete ? "completed" : (g.status || "active"),
+          completedAt: isComplete && g.status !== "completed" ? Date.now() : g.completedAt,
           updatedAt: Date.now(),
         };
       }
@@ -347,7 +362,7 @@ function App() {
     const goalName = goal ? goal.name : "Savings Goal";
 
     const tx: Transaction = {
-      id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 9),
+      id: crypto.randomUUID?.() || Math.random().toString(36).substring(2, 9),
       amount,
       category: "Investments",
       type: "expense",
@@ -364,6 +379,42 @@ function App() {
     setTransactions(updatedTxList);
     saveLocalTransactions(updatedTxList);
 
+    if (user) {
+      triggerFolderSync();
+    }
+
+    if (justCompleted) {
+      setShowConfetti(true);
+      setTimeout(() => setShowConfetti(false), 5000);
+    }
+  };
+
+  // Savings Goal Add Handler
+  const handleAddGoal = (name: string, targetAmount: number) => {
+    const newGoal: SavingsGoal = {
+      id: crypto.randomUUID?.() || Math.random().toString(36).substring(2, 9),
+      name,
+      targetAmount,
+      currentAmount: 0,
+      updatedAt: Date.now(),
+      createdAt: Date.now(),
+      status: "active",
+    };
+    const updated = [...savingsGoals, newGoal];
+    setSavingsGoals(updated);
+    saveLocalSavingsGoals(updated);
+    if (user) {
+      triggerFolderSync();
+    }
+  };
+
+  // Savings Goal Delete Handler
+  const handleDeleteGoal = (id: string) => {
+    const updatedGoals = savingsGoals.map((g) =>
+      g.id === id ? { ...g, status: "deleted" as const, updatedAt: Date.now() } : g
+    );
+    setSavingsGoals(updatedGoals);
+    saveLocalSavingsGoals(updatedGoals);
     if (user) {
       triggerFolderSync();
     }
@@ -511,6 +562,8 @@ function App() {
             onOpenStatementModal={() => setIsStatementModalOpen(true)}
             savingsGoals={savingsGoals}
             onContribute={handleContributeToGoal}
+            onAddGoal={handleAddGoal}
+            onDeleteGoal={handleDeleteGoal}
             categoryBudgets={categoryBudgets}
           />
         );
@@ -543,6 +596,8 @@ function App() {
             onOpenStatementModal={() => setIsStatementModalOpen(true)}
             savingsGoals={savingsGoals}
             onContribute={handleContributeToGoal}
+            onAddGoal={handleAddGoal}
+            onDeleteGoal={handleDeleteGoal}
             categoryBudgets={categoryBudgets}
           />
         );
@@ -578,6 +633,11 @@ function App() {
           onDismiss={handleDismissStatement}
           onSnooze={handleSnoozeStatement}
         />
+        {showConfetti && (
+          <div className="fixed inset-0 z-50 pointer-events-none">
+            <Confetti width={width} height={height} recycle={false} numberOfPieces={500} />
+          </div>
+        )}
       </>
     );
   }
@@ -609,6 +669,11 @@ function App() {
         onDismiss={handleDismissStatement}
         onSnooze={handleSnoozeStatement}
       />
+      {showConfetti && (
+        <div className="fixed inset-0 z-50 pointer-events-none">
+          <Confetti width={width} height={height} recycle={false} numberOfPieces={500} />
+        </div>
+      )}
     </>
   );
 }

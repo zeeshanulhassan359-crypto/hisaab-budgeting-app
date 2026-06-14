@@ -28,6 +28,9 @@ export interface SavingsGoal {
   targetAmount: number;
   currentAmount: number;
   updatedAt: number;
+  status?: "active" | "completed" | "deleted";
+  createdAt?: number;
+  completedAt?: number;
 }
 
 export interface SyncPayload {

@@ -20,6 +20,8 @@ interface HomeProps {
   onOpenStatementModal?: () => void;
   savingsGoals: SavingsGoal[];
   onContribute: (goalId: string, amount: number, accountId: string) => void;
+  onAddGoal: (name: string, targetAmount: number) => void;
+  onDeleteGoal: (id: string) => void;
   categoryBudgets: { [key: string]: number };
 }
 
@@ -34,6 +36,8 @@ export const Home: React.FC<HomeProps> = ({
   onOpenStatementModal,
   savingsGoals,
   onContribute,
+  onAddGoal,
+  onDeleteGoal,
   categoryBudgets,
 }) => {
   const [showMobileForm, setShowMobileForm] = useState(false);
@@ -126,6 +130,8 @@ export const Home: React.FC<HomeProps> = ({
           savingsGoals={savingsGoals}
           accounts={accounts}
           onContribute={onContribute}
+          onAddGoal={onAddGoal}
+          onDeleteGoal={onDeleteGoal}
         />
 
         {/* Weekly Report Dashboard Summary (filtered to active card) */}
@@ -258,11 +264,15 @@ export const Home: React.FC<HomeProps> = ({
           <CategoryExpenseChart transactions={filteredTransactions} />
 
           {/* Active Savings Milestones */}
-          <SavingsGoals
-            savingsGoals={savingsGoals}
-            accounts={accounts}
-            onContribute={onContribute}
-          />
+          {activeAccountId === null && (
+            <SavingsGoals
+              savingsGoals={savingsGoals}
+              accounts={accounts}
+              onContribute={onContribute}
+              onAddGoal={onAddGoal}
+              onDeleteGoal={onDeleteGoal}
+            />
+          )}
 
           {/* Daily spending and reports */}
           <WeeklyReport transactions={filteredTransactions} />
