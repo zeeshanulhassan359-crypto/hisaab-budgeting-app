@@ -46,34 +46,7 @@ const REMOTE_FILE_PATH = "/me/drive/special/approot:/transactions.json:/content"
 const GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0";
 
 // Standard default accounts pre-populated on first launch
-export const DEFAULT_ACCOUNTS: Account[] = [
-  {
-    id: "main_wallet",
-    name: "Main Wallet",
-    type: "cash",
-    color: "from-emerald-500 to-teal-600",
-    lastFour: "0000",
-    updatedAt: 1718000000000,
-  },
-  {
-    id: "snb_card",
-    name: "SNB Mada Card",
-    type: "debit",
-    color: "from-blue-600 to-indigo-700",
-    lastFour: "4560",
-    updatedAt: 1718000000000,
-  },
-  {
-    id: "al_rajhi_card",
-    name: "Al Rajhi Credit Card",
-    type: "credit",
-    color: "from-purple-600 to-pink-700",
-    lastFour: "8912",
-    limit: 10000,
-    expiry: "09/29",
-    updatedAt: 1718000000000,
-  },
-];
+export const DEFAULT_ACCOUNTS: Account[] = [];
 
 // Retrieve local cache of transactions
 export function getLocalTransactions(): Transaction[] {
@@ -118,11 +91,7 @@ export function saveLocalAccounts(accounts: Account[]) {
   localStorage.setItem(LOCAL_ACC_KEY, JSON.stringify(accounts));
 }
 
-export const DEFAULT_SAVINGS_GOALS: SavingsGoal[] = [
-  { id: "emergency_fund", name: "Emergency Fund", targetAmount: 15000, currentAmount: 5000, updatedAt: 1718000000000 },
-  { id: "laptop", name: "New Laptop", targetAmount: 6000, currentAmount: 2500, updatedAt: 1718000000000 },
-  { id: "japan_trip", name: "Japan Trip", targetAmount: 20000, currentAmount: 4000, updatedAt: 1718000000000 },
-];
+export const DEFAULT_SAVINGS_GOALS: SavingsGoal[] = [];
 
 export function getLocalSavingsGoals(): SavingsGoal[] {
   const localData = localStorage.getItem(LOCAL_GOALS_KEY);

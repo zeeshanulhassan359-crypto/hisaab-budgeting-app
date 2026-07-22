@@ -8,13 +8,31 @@ import { Plus, X, AlertCircle } from "lucide-react";
 import { CashFlowMetrics } from "../components/CashFlowMetrics";
 import { CategoryExpenseChart } from "../components/CategoryExpenseChart";
 import { SavingsGoals } from "../components/SavingsGoals";
+import { ReceiptScannerModal } from "../components/ReceiptScannerModal";
 
 interface HomeProps {
   transactions: Transaction[];
   accounts: Account[];
   activeAccountId: string | null;
   onSelectAccount: (id: string | null) => void;
-  onAddTransaction: (t: any) => void;
+  onAddTransaction: (t: {
+    amount: number;
+    category: string;
+    type: "income" | "expense";
+    date: string;
+    note: string;
+    accountId: string;
+  }) => void;
+  onAddTransactionsBatch: (
+    txs: Array<{
+      amount: number;
+      category: string;
+      type: "income" | "expense";
+      date: string;
+      note: string;
+      accountId: string;
+    }>
+  ) => void;
   onDeleteTransaction: (id: string) => void;
   isMobile: boolean;
   onOpenStatementModal?: () => void;
@@ -31,6 +49,7 @@ export const Home: React.FC<HomeProps> = ({
   activeAccountId,
   onSelectAccount,
   onAddTransaction,
+  onAddTransactionsBatch,
   onDeleteTransaction,
   isMobile,
   onOpenStatementModal,
@@ -41,6 +60,7 @@ export const Home: React.FC<HomeProps> = ({
   categoryBudgets,
 }) => {
   const [showMobileForm, setShowMobileForm] = useState(false);
+  const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
 
   // Compute transactions filtered by selected card
   const filteredTransactions = activeAccountId
@@ -196,11 +216,23 @@ export const Home: React.FC<HomeProps> = ({
                     onAddTransaction(tx);
                     setTimeout(() => setShowMobileForm(false), 800);
                   }}
+                  onOpenReceiptScanner={() => {
+                    setShowMobileForm(false);
+                    setIsReceiptModalOpen(true);
+                  }}
                 />
               </div>
             </div>
           </div>
         )}
+
+        <ReceiptScannerModal
+          isOpen={isReceiptModalOpen}
+          onClose={() => setIsReceiptModalOpen(false)}
+          accounts={accounts}
+          activeAccountId={activeAccountId}
+          onAddTransactionsBatch={onAddTransactionsBatch}
+        />
       </div>
     );
   }
@@ -231,6 +263,7 @@ export const Home: React.FC<HomeProps> = ({
             activeAccountId={activeAccountId}
             transactions={transactions}
             onAddTransaction={onAddTransaction}
+            onOpenReceiptScanner={() => setIsReceiptModalOpen(true)}
           />
         </div>
 
@@ -304,6 +337,14 @@ export const Home: React.FC<HomeProps> = ({
           />
         </div>
       </div>
+
+      <ReceiptScannerModal
+        isOpen={isReceiptModalOpen}
+        onClose={() => setIsReceiptModalOpen(false)}
+        accounts={accounts}
+        activeAccountId={activeAccountId}
+        onAddTransactionsBatch={onAddTransactionsBatch}
+      />
     </div>
   );
 };

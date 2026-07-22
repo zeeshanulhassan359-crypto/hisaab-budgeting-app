@@ -1,5 +1,4 @@
-import React from "react";
-import { Home as HomeIcon, TrendingUp, Settings as SettingsIcon } from "lucide-react";
+import { Home as HomeIcon, TrendingUp, Settings as SettingsIcon, HandCoins } from "lucide-react";
 
 interface MobileLayoutProps {
   activePage: string;
@@ -43,6 +42,19 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
         >
           <TrendingUp className="w-5 h-5" />
           <span className="text-[10px] tracking-tight">Investments</span>
+        </button>
+
+        {/* Lending Button */}
+        <button
+          onClick={() => setActivePage("lending")}
+          className={`flex flex-col items-center gap-1 py-1.5 px-4 rounded-xl transition-all duration-300 cursor-pointer ${
+            activePage === "lending"
+              ? "text-accent-custom bg-accent-custom-bg font-bold scale-105"
+              : "text-text-secondary hover:text-text-primary font-semibold"
+          }`}
+        >
+          <HandCoins className="w-5 h-5" />
+          <span className="text-[10px] tracking-tight">Lending</span>
         </button>
 
         {/* Settings Button */}

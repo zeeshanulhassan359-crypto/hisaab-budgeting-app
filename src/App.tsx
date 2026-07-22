@@ -9,6 +9,7 @@ import {
   saveLocalSavingsGoals,
 } from "./services/onedrive";
 import type { Transaction, Account, SavingsGoal } from "./services/onedrive";
+import { getActiveAccountInfo } from "./services/auth";
 import {
   getHandleFromIndexedDB,
   saveHandleToIndexedDB,
@@ -24,10 +25,108 @@ import { Home } from "./pages/Home";
 import { Investments } from "./pages/Investments";
 import { Settings } from "./pages/Settings";
 import { StatementModal } from "./components/StatementModal";
+import { Landing } from "./pages/Landing";
+import type { UserProfile } from "./pages/Landing";
+import { Lending } from "./pages/Lending";
+import { LoginSplash } from "./components/LoginSplash";
 import Confetti from "react-confetti";
 import { useWindowSize } from "react-use";
 
 function App() {
+  // Profile Authentication State
+  const [profile, setProfile] = useState<UserProfile | null>(() => {
+    const saved = localStorage.getItem("hisaab_profile");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (err) {
+        console.warn("Error parsing profile from localstorage", err);
+      }
+    }
+    return null;
+  });
+
+  // MSAL Active Session Auto-Login Effect
+  useEffect(() => {
+    const checkMsalSession = async () => {
+      try {
+        const msalAccount = await getActiveAccountInfo();
+        if (msalAccount && !profile) {
+          const newProfile: UserProfile = {
+            name: msalAccount.name || "Microsoft User",
+            email: msalAccount.username,
+            provider: "microsoft",
+          };
+          setProfile(newProfile);
+          localStorage.setItem("hisaab_profile", JSON.stringify(newProfile));
+        }
+      } catch (err) {
+        console.warn("MSAL session check failed", err);
+      }
+    };
+    checkMsalSession();
+  }, [profile]);
+
+  // Login splash transition state
+  const [showSplash, setShowSplash] = useState(false);
+  const [splashProfile, setSplashProfile] = useState<UserProfile | null>(null);
+
+  const handleLoginSuccess = (userProfile: UserProfile) => {
+    // Show splash animation first, then set the actual profile
+    setSplashProfile(userProfile);
+    setShowSplash(true);
+  };
+
+  const handleSplashComplete = () => {
+    if (splashProfile) {
+      setProfile(splashProfile);
+      localStorage.setItem("hisaab_profile", JSON.stringify(splashProfile));
+    }
+    setShowSplash(false);
+    setSplashProfile(null);
+  };
+
+  const handleLogoutProfile = async () => {
+    if (profile?.provider === "microsoft") {
+      try {
+        const { logoutMicrosoft } = await import("./services/auth");
+        await logoutMicrosoft();
+      } catch (err) {
+        console.warn("MSAL logout failed", err);
+      }
+    }
+    setProfile(null);
+    localStorage.removeItem("hisaab_profile");
+    handleDisconnectFolder();
+  };
+
+  const handleUpdateProfile = (newProfile: UserProfile) => {
+    setProfile(newProfile);
+    localStorage.setItem("hisaab_profile", JSON.stringify(newProfile));
+    
+    // Update the account inside the registered accounts list
+    const saved = localStorage.getItem("hisaab_registered_accounts");
+    if (saved) {
+      try {
+        const accountsList = JSON.parse(saved);
+        const updatedList = accountsList.map((acc: any) => {
+          if (acc.email.toLowerCase() === profile?.email.toLowerCase()) {
+            return {
+              ...acc,
+              name: newProfile.name,
+              email: newProfile.email,
+              avatarUrl: newProfile.avatarUrl,
+            };
+          }
+          return acc;
+        });
+        localStorage.setItem("hisaab_registered_accounts", JSON.stringify(updatedList));
+      } catch (err) {
+        console.error("Error updating registered accounts list", err);
+      }
+    }
+  };
+
   // Navigation & Page State
   const [activePage, setActivePage] = useState<string>("home");
 
@@ -124,7 +223,9 @@ function App() {
       }
 
       if (hasDebt && lastPrompted !== currentYearMonth && lastSnoozed !== todayDateStr) {
-        setIsStatementModalOpen(true);
+        setTimeout(() => {
+          setIsStatementModalOpen(true);
+        }, 0);
       }
     }
   }, [accounts, transactions]);
@@ -295,6 +396,35 @@ function App() {
     }
   };
 
+  // Add multiple transactions in a single batch
+  const handleAddTransactionsBatch = async (
+    txInputs: Array<{
+      amount: number;
+      category: string;
+      type: "income" | "expense";
+      date: string;
+      note: string;
+      accountId: string;
+    }>
+  ) => {
+    const newTxs: Transaction[] = txInputs.map((txInput) => ({
+      ...txInput,
+      id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 9),
+      updatedAt: Date.now(),
+    }));
+
+    const updatedList = [...newTxs, ...transactions].sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+
+    setTransactions(updatedList);
+    saveLocalTransactions(updatedList);
+
+    if (user) {
+      triggerFolderSync();
+    }
+  };
+
   // Delete Transaction handler
   const handleDeleteTransaction = async (id: string) => {
     const updatedList = transactions.filter((t) => t.id !== id);
@@ -447,8 +577,10 @@ function App() {
   const handleClearTransactions = () => {
     setTransactions([]);
     saveLocalTransactions([]);
-    setAccounts(DEFAULT_ACCOUNTS);
-    saveLocalAccounts(DEFAULT_ACCOUNTS);
+    setAccounts([]);
+    saveLocalAccounts([]);
+    setSavingsGoals([]);
+    saveLocalSavingsGoals([]);
     setActiveAccountId(null);
     if (user) {
       triggerFolderSync();
@@ -501,7 +633,7 @@ function App() {
       updatedAt: now,
     };
 
-    let updatedList = [incomeTx];
+    const updatedList = [incomeTx];
 
     if (sourceAccountId !== "external") {
       const expenseTx: Transaction = {
@@ -557,6 +689,7 @@ function App() {
             activeAccountId={activeAccountId}
             onSelectAccount={setActiveAccountId}
             onAddTransaction={handleAddTransaction}
+            onAddTransactionsBatch={handleAddTransactionsBatch}
             onDeleteTransaction={handleDeleteTransaction}
             isMobile={isMobile}
             onOpenStatementModal={() => setIsStatementModalOpen(true)}
@@ -569,6 +702,13 @@ function App() {
         );
       case "investments":
         return <Investments />;
+      case "lending":
+        return (
+          <Lending
+            accounts={accounts}
+            onAddTransaction={handleAddTransaction}
+          />
+        );
       case "settings":
         return (
           <Settings
@@ -581,6 +721,9 @@ function App() {
             categoryBudgets={categoryBudgets}
             onUpdateCategoryBudgets={handleUpdateCategoryBudgets}
             onImportTransactions={handleImportTransactions}
+            profile={profile}
+            onLogoutProfile={handleLogoutProfile}
+            onUpdateProfile={handleUpdateProfile}
           />
         );
       default:
@@ -591,6 +734,7 @@ function App() {
             activeAccountId={activeAccountId}
             onSelectAccount={setActiveAccountId}
             onAddTransaction={handleAddTransaction}
+            onAddTransactionsBatch={handleAddTransactionsBatch}
             onDeleteTransaction={handleDeleteTransaction}
             isMobile={isMobile}
             onOpenStatementModal={() => setIsStatementModalOpen(true)}
@@ -603,6 +747,27 @@ function App() {
         );
     }
   };
+
+  // Render splash screen during login transition
+  if (showSplash && splashProfile) {
+    return (
+      <LoginSplash
+        userName={splashProfile.name}
+        onComplete={handleSplashComplete}
+      />
+    );
+  }
+
+  // Render Landing Page if no profile is active
+  if (!profile) {
+    return (
+      <Landing
+        theme={theme}
+        toggleTheme={handleToggleTheme}
+        onLoginSuccess={handleLoginSuccess}
+      />
+    );
+  }
 
   // Bind proper shell wrappers (Mobile layout vs Desktop sidebar Layout)
   if (isMobile) {
@@ -622,6 +787,8 @@ function App() {
             isSyncing={isSyncing}
             onSync={triggerFolderSync}
             activePage={activePage}
+            profile={profile}
+            onLogoutProfile={handleLogoutProfile}
           />
           {renderPageContent()}
         </MobileLayout>
@@ -658,6 +825,8 @@ function App() {
           isSyncing={isSyncing}
           onSync={triggerFolderSync}
           activePage={activePage}
+          profile={profile}
+          onLogoutProfile={handleLogoutProfile}
         />
         {renderPageContent()}
       </DesktopLayout>

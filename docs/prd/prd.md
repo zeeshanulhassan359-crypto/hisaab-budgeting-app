@@ -93,11 +93,11 @@ The design system is split into two modes: **Minimalist Light Mode** (Indigo & S
 
 ## 4. Implementation Checklists & Tasks
 
-- [ ] Consolidate Documentation (PRD, design-system, tasks)
-- [ ] Implement Hisaab Monogram Logo & Brand Header in `Header.tsx` and layouts
-- [ ] Implement Dynamic Cash Flow Metrics Snapshot Panel
-- [ ] Implement Interactive SVG Column Chart for Categories
-- [ ] Implement Budget Compliance Threshold Warnings & Setting Controls
-- [ ] Implement Active Savings Milestones (goals, progress bars, contribution triggers)
-- [ ] Implement Archival Transaction Ledger Extensions (Search, Type Filters, CSV & JSON Export)
-- [ ] Verification, compilation check, styling verification in browser
+- [x] Consolidate Documentation (PRD, design-system, tasks)
+- [x] Implement Hisaab Monogram Logo & Brand Header in `Header.tsx` and layouts
+- [x] Implement Dynamic Cash Flow Metrics Snapshot Panel
+- [x] Implement Interactive SVG Column Chart for Categories
+- [x] Implement Budget Compliance Threshold Warnings & Setting Controls
+- [x] Implement Active Savings Milestones (goals, progress bars, contribution triggers)
+- [x] Implement Archival Transaction Ledger Extensions (Search, Type Filters, CSV & JSON Export)
+- [x] Verification, compilation check, styling verification in browser

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Trash2, Search, Inbox, FileSpreadsheet, FileJson } from "lucide-react";
 import type { Transaction, Account } from "../services/onedrive";
-import { CATEGORIES } from "./TransactionForm";
+import { CATEGORIES } from "../constants/categories";
 
 interface TransactionListProps {
   transactions: Transaction[];
@@ -44,11 +44,15 @@ export const TransactionList: React.FC<TransactionListProps> = ({
 
   const grouped = groupTransactionsByDate(paginatedTransactions);
 
-  const getDateLabel = (dateStr: string) => {
+  const [dateBounds] = useState(() => {
     const today = new Date().toISOString().split("T")[0];
     const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
-    if (dateStr === today) return "Today";
-    if (dateStr === yesterday) return "Yesterday";
+    return { today, yesterday };
+  });
+
+  const getDateLabel = (dateStr: string) => {
+    if (dateStr === dateBounds.today) return "Today";
+    if (dateStr === dateBounds.yesterday) return "Yesterday";
     // Parse as local midnight (append T00:00:00 to avoid UTC-vs-local timezone offset mismatch)
     return new Date(`${dateStr}T00:00:00`).toLocaleDateString(undefined, {
       weekday: "short",

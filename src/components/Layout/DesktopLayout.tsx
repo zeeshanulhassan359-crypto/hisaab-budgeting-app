@@ -1,5 +1,5 @@
 import React from "react";
-import { Home as HomeIcon, TrendingUp, Settings as SettingsIcon } from "lucide-react";
+import { Home as HomeIcon, TrendingUp, Settings as SettingsIcon, HandCoins } from "lucide-react";
 import { HisaabLogo } from "../HisaabLogo";
 
 interface DesktopLayoutProps {
@@ -11,6 +11,7 @@ interface DesktopLayoutProps {
 const NAV_ITEMS = [
   { id: "home", label: "Dashboard", icon: HomeIcon },
   { id: "investments", label: "Investments", icon: TrendingUp },
+  { id: "lending", label: "Lending Tracker", icon: HandCoins },
   { id: "settings", label: "Settings", icon: SettingsIcon },
 ];
 
@@ -24,16 +25,8 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({
       {/* Full navigation sidebar — expanded with labels, not icon-only */}
       <aside className="w-[240px] border-r border-border-custom flex flex-col py-8 px-4 gap-1 shrink-0 sticky top-0 h-screen z-40 bg-bg-card">
         {/* Brand block */}
-        <div className="flex items-center gap-3 px-3 mb-8">
-          <HisaabLogo size={40} />
-          <div className="flex flex-col">
-            <span className="text-[17px] font-bold tracking-tight text-text-primary leading-tight font-[var(--font-display)]" style={{ fontFamily: 'var(--font-display)' }}>
-              Hisaab
-            </span>
-            <span className="text-[8px] font-semibold text-text-tertiary tracking-[0.18em] uppercase">
-              SMART BUDGETING
-            </span>
-          </div>
+        <div className="flex items-center gap-3 px-3 mb-8 h-12 overflow-visible">
+          <HisaabLogo size={42} />
         </div>
 
         {/* Navigation items with labels */}

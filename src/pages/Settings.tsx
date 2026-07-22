@@ -1,10 +1,11 @@
-import React, { useState } from "react";
-import { Settings as SettingsIcon, Folder, FileSpreadsheet, AlertTriangle, Trash2, Plus, CreditCard, Sliders } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Settings as SettingsIcon, Folder, FileSpreadsheet, AlertTriangle, Trash2, Plus, CreditCard, Sliders, LogOut, User, AlertCircle, CheckCircle } from "lucide-react";
 import { getLocalSavingsGoals } from "../services/onedrive";
 import type { Transaction, Account } from "../services/onedrive";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import type { UserProfile } from "./Landing";
 
 interface SettingsProps {
   transactions: Transaction[];
@@ -16,14 +17,18 @@ interface SettingsProps {
   categoryBudgets: { [key: string]: number };
   onUpdateCategoryBudgets: (limits: { [key: string]: number }) => void;
   onImportTransactions: (imported: Transaction[]) => void;
+  profile: UserProfile | null;
+  onLogoutProfile: () => void;
+  onUpdateProfile: (newProfile: UserProfile) => void;
 }
 
 const GRADIENTS = [
-  { name: "Deep Navy", class: "from-blue-600 to-indigo-700 bg-linear-to-r" },
-  { name: "Green Emerald", class: "from-emerald-500 to-teal-600 bg-linear-to-r" },
-  { name: "Crimson Red", class: "from-rose-500 to-red-600 bg-linear-to-r" },
-  { name: "Purple Sunset", class: "from-purple-600 to-pink-700 bg-linear-to-r" },
-  { name: "Golden Sand", class: "from-amber-400 to-orange-500 bg-linear-to-r" },
+  { name: "Al Rajhi Royal Blue", class: "from-[#004b87] to-[#071d49]" },
+  { name: "SNB AlAhli Green", class: "from-[#005030] to-[#002f1a]" },
+  { name: "Alinma Sand Gold", class: "from-[#b2975e] to-[#4e3e23]" },
+  { name: "Riyad Bank Orange", class: "from-[#e57e22] to-[#803300]" },
+  { name: "SABB Crimson Red", class: "from-[#d20a11] to-[#600306]" },
+  { name: "Walnut Leather Brown", class: "from-[#2d251e] to-[#120e0a]" },
 ];
 
 export const Settings: React.FC<SettingsProps> = ({
@@ -36,7 +41,80 @@ export const Settings: React.FC<SettingsProps> = ({
   categoryBudgets,
   onUpdateCategoryBudgets,
   onImportTransactions,
+  profile,
+  onLogoutProfile,
+  onUpdateProfile,
 }) => {
+  // Preset avatar illustration templates
+  const PRESET_AVATARS = [
+    { name: "Slate Shirt Guy", dataUrl: "/avatars/avatar-1.jpg" },
+    { name: "Curly Hair Lady", dataUrl: "/avatars/avatar-2.jpg" },
+    { name: "Glasses Gentleman", dataUrl: "/avatars/avatar-3.jpg" },
+    { name: "Mustache Gentleman", dataUrl: "/avatars/avatar-4.jpg" },
+  ];
+
+  // Profile Editor Form State
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editName, setEditName] = useState(profile?.name || "");
+  const [editEmail, setEditEmail] = useState(profile?.email || "");
+  const [tempAvatarUrl, setTempAvatarUrl] = useState<string | undefined>(profile?.avatarUrl);
+  const [editError, setEditError] = useState("");
+  const [editSuccess, setEditSuccess] = useState(false);
+
+  useEffect(() => {
+    if (profile) {
+      setEditName(profile.name);
+      setEditEmail(profile.email);
+      setTempAvatarUrl(profile.avatarUrl);
+    }
+  }, [profile]);
+
+  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 512 * 1024) {
+        setEditError("Image is too large. Max size allowed is 500KB.");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (uploadEvent) => {
+        const base64Url = uploadEvent.target?.result as string;
+        setTempAvatarUrl(base64Url);
+        setEditError("");
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSaveProfile = () => {
+    setEditError("");
+    setEditSuccess(false);
+
+    if (!editName.trim()) {
+      setEditError("Name field cannot be blank.");
+      return;
+    }
+    if (!editEmail.trim() || !editEmail.includes("@")) {
+      setEditError("Please enter a valid email address.");
+      return;
+    }
+
+    if (profile) {
+      const updatedProfile: UserProfile = {
+        ...profile,
+        name: editName.trim(),
+        email: editEmail.trim().toLowerCase(),
+        avatarUrl: tempAvatarUrl,
+      };
+
+      onUpdateProfile(updatedProfile);
+      setEditSuccess(true);
+      setTimeout(() => {
+        setEditSuccess(false);
+        setIsEditingProfile(false);
+      }, 1000);
+    }
+  };
   // Card Manager Form State
   const [cardName, setCardName] = useState("");
   const [cardType, setCardType] = useState<"credit" | "debit" | "cash">("debit");
@@ -167,7 +245,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
           // Determine Type and correct positive amount
           let type: "income" | "expense" = "expense";
-          let amount = Math.abs(val);
+          const amount = Math.abs(val);
 
           if (typeIdx !== -1 && row[typeIdx] !== undefined) {
             const tVal = String(row[typeIdx]).toLowerCase().trim();
@@ -359,6 +437,188 @@ export const Settings: React.FC<SettingsProps> = ({
         </p>
       </div>
 
+      {/* Active Profile Info */}
+      {profile && (
+        <div className="flex flex-col gap-4">
+          <div className="glass-panel p-5 flex flex-col sm:flex-row items-center justify-between gap-4 animate-fade-in-up duration-300">
+            <div className="flex items-center gap-4 text-left w-full sm:w-auto">
+              {/* Initials/Avatar Image */}
+              <div className="w-14 h-14 rounded-full flex items-center justify-center text-lg font-black text-white bg-linear-to-tr from-accent-custom to-indigo-600 shadow-lg relative shrink-0 overflow-hidden border border-white/10">
+                {profile.avatarUrl ? (
+                  <img src={profile.avatarUrl} alt="User Avatar" className="w-full h-full object-cover" />
+                ) : (
+                  profile.name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()
+                )}
+                
+                {/* Profile Provider Badge */}
+                <div className={`absolute bottom-0 right-0 w-4 h-4 rounded-full border-2 border-bg-card flex items-center justify-center ${
+                  profile.provider === "google" 
+                    ? "bg-[#EA4335]" 
+                    : profile.provider === "microsoft" 
+                    ? "bg-[#05a6f0]" 
+                    : "bg-text-primary"
+                }`} />
+              </div>
+
+              <div className="flex flex-col gap-0.5">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-black text-text-primary">{profile.name}</h3>
+                  <span className="text-[9px] font-bold text-accent-custom bg-accent-custom-bg px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                    {profile.provider} Profile
+                  </span>
+                </div>
+                <p className="text-xs text-text-secondary font-medium">{profile.email}</p>
+                <p className="text-[10px] text-text-tertiary font-bold uppercase tracking-wider mt-1">
+                  Vault Scope: Private Local Client Execution
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end sm:justify-start">
+              <Button
+                onClick={() => setIsEditingProfile(!isEditingProfile)}
+                variant="outline"
+                className="h-10 px-5 border border-accent-custom/30 hover:bg-accent-custom-bg/25 text-accent-custom rounded-full font-bold cursor-pointer transition flex items-center justify-center gap-1.5"
+              >
+                <User className="w-4 h-4" /> {isEditingProfile ? "Cancel" : "Edit Profile"}
+              </Button>
+              <Button
+                onClick={onLogoutProfile}
+                variant="outline"
+                className="h-10 px-5 border border-expense-custom/30 hover:bg-expense-custom-bg/25 text-expense-custom hover:text-expense-custom rounded-full font-bold cursor-pointer transition flex items-center justify-center gap-1.5"
+              >
+                <LogOut className="w-4 h-4" /> Sign Out
+              </Button>
+            </div>
+          </div>
+
+          {/* Edit Profile Sub-form */}
+          {isEditingProfile && (
+            <div className="glass-panel p-5 border border-border-custom/50 bg-border-custom/5 animate-fade-in-up duration-300 flex flex-col gap-5">
+              <h4 className="text-sm font-black text-text-primary uppercase tracking-wider flex items-center gap-2 border-b border-border-custom/30 pb-2">
+                <User className="w-4 h-4 text-accent-custom" /> Edit Profile & Pictures
+              </h4>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+                {/* Avatar upload & preview */}
+                <div className="flex flex-col items-center gap-4 text-center">
+                  <div className="relative">
+                    <div className="w-20 h-20 rounded-full flex items-center justify-center text-2xl font-black text-white bg-linear-to-tr from-accent-custom to-indigo-600 shadow-xl overflow-hidden shrink-0 border-2 border-white/20">
+                      {tempAvatarUrl ? (
+                        <img src={tempAvatarUrl} alt="Avatar Preview" className="w-full h-full object-cover" />
+                      ) : (
+                        editName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase() || "?"
+                      )}
+                    </div>
+                    {tempAvatarUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setTempAvatarUrl(undefined)}
+                        className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-expense-custom text-white font-bold text-xs flex items-center justify-center shadow-md hover:bg-expense-custom/95 cursor-pointer"
+                        title="Remove Picture"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-2 w-full">
+                    <label className="w-full h-9 px-4 rounded-full bg-bg-elevated hover:bg-border-custom/20 border border-border-custom/50 flex items-center justify-center text-xs font-bold text-text-secondary cursor-pointer transition">
+                      <span>Upload Custom Picture</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleAvatarUpload}
+                        className="hidden"
+                      />
+                    </label>
+                    <span className="text-[10px] text-text-tertiary font-medium">PNG or JPG, max 500KB</span>
+                  </div>
+                </div>
+
+                {/* Profile Details Editor */}
+                <div className="md:col-span-2 flex flex-col gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-text-secondary font-bold">Profile Name</label>
+                      <Input
+                        type="text"
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        className="w-full h-10 px-3.5 bg-border-custom/10 border border-border-custom rounded-xl font-bold text-text-primary text-xs"
+                        placeholder="Enter full name"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-text-secondary font-bold">Email Address</label>
+                      <Input
+                        type="email"
+                        value={editEmail}
+                        onChange={(e) => setEditEmail(e.target.value)}
+                        className="w-full h-10 px-3.5 bg-border-custom/10 border border-border-custom rounded-xl font-bold text-text-primary text-xs"
+                        placeholder="Enter email address"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Preset Selector */}
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs text-text-secondary font-bold">Or Select a Premium Avatar Preset</label>
+                    <div className="flex flex-wrap gap-2.5 items-center">
+                      {PRESET_AVATARS.map((avatar, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setTempAvatarUrl(avatar.dataUrl)}
+                          className="w-10 h-10 rounded-full border border-border-custom/50 hover:scale-105 hover:border-accent-custom transition-all duration-200 shadow-sm relative overflow-hidden flex items-center justify-center cursor-pointer shrink-0"
+                          title={avatar.name}
+                        >
+                          <img src={avatar.dataUrl} alt={avatar.name} className="w-full h-full object-cover" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {editError && (
+                    <div className="text-xs text-expense-custom font-bold flex items-center gap-1">
+                      <AlertCircle className="w-3.5 h-3.5" /> {editError}
+                    </div>
+                  )}
+
+                  {editSuccess && (
+                    <div className="text-xs text-success-custom font-bold flex items-center gap-1">
+                      <CheckCircle className="w-3.5 h-3.5" /> Profile successfully updated!
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-3 border-t border-border-custom/30 pt-3 mt-1">
+                    <Button
+                      onClick={handleSaveProfile}
+                      className="h-10 px-6 bg-success-custom hover:bg-success-custom/90 text-white rounded-full font-bold text-xs shadow-md transition cursor-pointer"
+                    >
+                      Save Changes
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setIsEditingProfile(false);
+                        setEditName(profile.name);
+                        setEditEmail(profile.email);
+                        setTempAvatarUrl(profile.avatarUrl);
+                        setEditError("");
+                      }}
+                      variant="outline"
+                      className="h-10 px-6 border border-border-custom/50 hover:bg-bg-elevated text-text-secondary rounded-full font-bold text-xs transition cursor-pointer"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
         <div className="flex flex-col gap-6">
           {/* Local Folder Sync Guide */}
@@ -452,7 +712,7 @@ export const Settings: React.FC<SettingsProps> = ({
                       {GRADIENTS.map((grad) => (
                         <SelectItem key={grad.class} value={grad.class} className="cursor-pointer">
                           <div className="flex items-center gap-2">
-                            <div className={`w-5 h-3 rounded-xs ${grad.class} border border-white/10`} />
+                            <div className={`w-5 h-3 rounded-xs bg-linear-to-r ${grad.class} border border-white/10`} />
                             <span>{grad.name}</span>
                           </div>
                         </SelectItem>

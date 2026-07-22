@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
+import logoSrc from "../assets/hisaab-logo.svg";
 
 interface HisaabLogoProps {
   className?: string;
@@ -6,88 +7,134 @@ interface HisaabLogoProps {
 }
 
 export const HisaabLogo: React.FC<HisaabLogoProps> = ({ className = "", size = 40 }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
+  // Check if dark mode is active on document root
+  useEffect(() => {
+    const checkDark = () => {
+      setIsDarkMode(document.documentElement.classList.contains("dark"));
+    };
+    checkDark();
+
+    // Set up a MutationObserver to listen for class changes on the html tag (theme switching)
+    const observer = new MutationObserver(checkDark);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const img = new Image();
+    img.src = logoSrc;
+    img.onload = () => {
+      // 1. Create a temporary off-screen canvas to analyze original image pixels
+      const tempCanvas = document.createElement("canvas");
+      tempCanvas.width = img.width;
+      tempCanvas.height = img.height;
+      const tempCtx = tempCanvas.getContext("2d");
+      if (!tempCtx) return;
+      tempCtx.drawImage(img, 0, 0);
+
+      const tempImgData = tempCtx.getImageData(0, 0, img.width, img.height);
+      const tempData = tempImgData.data;
+
+      // Find the bounding box of non-white and non-transparent pixels to crop margins
+      let minX = img.width;
+      let maxX = 0;
+      let minY = img.height;
+      let maxY = 0;
+
+      for (let y = 0; y < img.height; y++) {
+        for (let x = 0; x < img.width; x++) {
+          const idx = (y * img.width + x) * 4;
+          const r = tempData[idx];
+          const g = tempData[idx + 1];
+          const b = tempData[idx + 2];
+          const a = tempData[idx + 3];
+
+          // Pixel is not white and has alpha channel opacity
+          const isWhite = r > 245 && g > 245 && b > 245;
+          const isTransparent = a < 10;
+          
+          if (!isWhite && !isTransparent) {
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+          }
+        }
+      }
+
+      // Fallback if no non-white pixels are found (e.g. image is completely white)
+      if (maxX < minX || maxY < minY) {
+        minX = 0;
+        maxX = img.width - 1;
+        minY = 0;
+        maxY = img.height - 1;
+      }
+
+      // Add small safety margin padding to prevent edge clipping (e.g. 8 pixels)
+      const padding = 8;
+      minX = Math.max(0, minX - padding);
+      minY = Math.max(0, minY - padding);
+      maxX = Math.min(img.width - 1, maxX + padding);
+      maxY = Math.min(img.height - 1, maxY + padding);
+
+      const croppedWidth = maxX - minX + 1;
+      const croppedHeight = maxY - minY + 1;
+
+      // 2. Set main canvas size matching the cropped logo's aspect ratio
+      const aspect = croppedWidth / croppedHeight;
+      canvas.width = 400 * aspect;
+      canvas.height = 400;
+
+      // Draw only the cropped bounding box region onto the target canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, minX, minY, croppedWidth, croppedHeight, 0, 0, canvas.width, canvas.height);
+
+      // 3. Process target canvas pixels (Background stripping and dark-mode inverting)
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imgData.data;
+
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+
+        // Remove white background (convert to alpha transparent)
+        if (r > 240 && g > 240 && b > 240) {
+          data[i + 3] = 0; // alpha = 0
+        } else if (isDarkMode) {
+          // Adjust dark text color to off-white/silver-blue for readability in dark mode
+          // Dark blue/black text: R < 100, G < 100, B < 120 (excludes high G green and high B blue)
+          if (r < 100 && g < 110 && b < 130) {
+            data[i] = 241;     // R
+            data[i + 1] = 245; // G
+            data[i + 2] = 249; // B
+          }
+        }
+      }
+
+      ctx.putImageData(imgData, 0, 0);
+    };
+  }, [isDarkMode]);
+
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 100 100"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className={`shrink-0 select-none ${className}`}
-    >
-      <defs>
-        {/* Emerald Pillar Gradient */}
-        <linearGradient id="emeraldGrad" x1="20" y1="10" x2="80" y2="90" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#10b981" /> {/* emerald-500 */}
-          <stop offset="100%" stopColor="#059669" /> {/* emerald-600 */}
-        </linearGradient>
-        
-        {/* Golden Ledger Curve Gradient */}
-        <linearGradient id="goldCurveGrad" x1="30" y1="20" x2="90" y2="80" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#f59e0b" /> {/* amber-500 */}
-          <stop offset="100%" stopColor="#d97706" /> {/* amber-600 */}
-        </linearGradient>
-
-        {/* Shadow for Premium Depth */}
-        <filter id="premiumGlow" x="-10%" y="-10%" width="120%" height="120%" filterUnits="userSpaceOnUse">
-          <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#000000" floodOpacity="0.15" />
-        </filter>
-      </defs>
-
-      {/* 1. Hexagon Background & Neon Border */}
-      <path
-        d="M50 8 L86.4 29 L86.4 71 L50 92 L13.6 71 L13.6 29 Z"
-        fill="#05140e"
-        stroke="#10b981"
-        strokeWidth="3.5"
-        strokeLinejoin="round"
-        className="transition-all duration-300"
-      />
-
-      {/* 2. Inner dashed hexagon border */}
-      <path
-        d="M50 14 L81.2 32 L81.2 68 L50 86 L18.8 68 L18.8 32 Z"
-        stroke="#f59e0b"
-        strokeWidth="1.2"
-        strokeDasharray="4 4"
-        fill="none"
-        opacity="0.6"
-      />
-
-      {/* 3. Left vertical green stem */}
-      <path
-        d="M36 30 V70"
-        stroke="url(#emeraldGrad)"
-        strokeWidth="7"
-        strokeLinecap="round"
-      />
-      
-      {/* 4. Right vertical green stem */}
-      <path
-        d="M60 30 V70"
-        stroke="url(#emeraldGrad)"
-        strokeWidth="7"
-        strokeLinecap="round"
-      />
-
-      {/* 5. Golden Ledger-Growth Calligraphy Curve */}
-      <path
-        d="M36 52 C44 52 50 48 55 40 C60 32 64 24 72 20"
-        stroke="url(#goldCurveGrad)"
-        strokeWidth="6"
-        strokeLinecap="round"
-        fill="none"
-        filter="url(#premiumGlow)"
-      />
-
-      {/* 6. Connection link/bridge for the crossbar */}
-      <path
-        d="M36 52 H60"
-        stroke="url(#goldCurveGrad)"
-        strokeWidth="5"
-        strokeLinecap="round"
-      />
-    </svg>
+    <canvas
+      ref={canvasRef}
+      style={{ height: size, width: "auto" }}
+      className={`shrink-0 select-none max-w-full object-contain transition-all duration-300 ${className}`}
+    />
   );
 };
 

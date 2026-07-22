@@ -43,8 +43,8 @@ export const CashFlowMetrics: React.FC<CashFlowMetricsProps> = ({
   };
 
   let netLiquidBalance = 0;
-  let monthlyInflow = 0;
-  let monthlyOutflow = 0;
+  let monthlyInflow: number;
+  let monthlyOutflow: number;
 
   if (activeAccountId === null) {
     const totalLiquid = liquidAccounts.reduce((sum, a) => sum + getAccountBalance(a.id), 0);

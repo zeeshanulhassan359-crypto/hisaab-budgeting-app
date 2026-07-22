@@ -1,6 +1,6 @@
 import React from "react";
 import type { Transaction } from "../services/onedrive";
-import { CATEGORIES } from "./TransactionForm";
+import { CATEGORIES } from "../constants/categories";
 
 interface WeeklyReportProps {
   transactions: Transaction[];
