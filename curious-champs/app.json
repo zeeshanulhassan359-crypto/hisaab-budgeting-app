@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "Curious Champs",
+    "slug": "curious-champs",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.curiouschamps.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.curiouschamps.app"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-video",
+      "expo-font",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Curious Champs uses the microphone so your child can ask questions out loud.",
+          "speechRecognitionPermission": "Curious Champs turns your child’s spoken question into text on this device."
+        }
+      ]
+    ],
+    "scheme": "curiouschamps",
+    "extra": {
+      "apiUrl": "http://localhost:8787"
+    }
+  }
+}
